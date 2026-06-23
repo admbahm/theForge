@@ -1,63 +1,79 @@
 package engine
 
 import (
+	"context"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/admbahm/theForge/pkg/models"
 	"github.com/fsnotify/fsnotify"
 )
 
+// IntelGenerator produces Markdown intelligence for a job posting.
+type IntelGenerator interface {
+	GenerateIntel(context.Context, models.JobPost) (string, error)
+}
+
 // Orchestrator monitors the Obsidian vault and processes job posts.
 type Orchestrator struct {
 	vaultPath string
+	generator IntelGenerator
 	watcher   *fsnotify.Watcher
-	stopChan  chan struct{}
+	ctx       context.Context
+	cancel    context.CancelFunc
+	stopOnce  sync.Once
 }
 
 // NewOrchestrator creates a new Orchestrator instance.
-func NewOrchestrator(vaultPath string) (*Orchestrator, error) {
+func NewOrchestrator(vaultPath string, generator IntelGenerator) (*Orchestrator, error) {
+	if generator == nil {
+		return nil, fmt.Errorf("intel generator is required")
+	}
+
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create watcher: %w", err)
 	}
+	ctx, cancel := context.WithCancel(context.Background())
 
 	return &Orchestrator{
 		vaultPath: vaultPath,
+		generator: generator,
 		watcher:   watcher,
-		stopChan:  make(chan struct{}),
+		ctx:       ctx,
+		cancel:    cancel,
 	}, nil
 }
 
-// Start begins the vault monitoring and performs an initial scan.
+// Start begins recursive vault monitoring and performs an initial scan.
 func (o *Orchestrator) Start() error {
-	// 1. Initial batch processing fallback
+	if err := o.addWatches(o.vaultPath); err != nil {
+		return fmt.Errorf("add vault watches: %w", err)
+	}
+
 	log.Printf("Starting initial vault scan: %s", o.vaultPath)
 	if err := o.processVault(); err != nil {
 		return fmt.Errorf("initial scan failed: %w", err)
 	}
 
-	// 2. Start non-blocking watcher
-	if err := o.watcher.Add(o.vaultPath); err != nil {
-		return fmt.Errorf("failed to add vault path to watcher: %w", err)
-	}
-
 	go o.watch()
-
 	return nil
 }
 
-// Stop stops the orchestrator.
+// Stop stops the orchestrator. It is safe to call more than once.
 func (o *Orchestrator) Stop() {
-	close(o.stopChan)
-	o.watcher.Close()
+	o.stopOnce.Do(func() {
+		o.cancel()
+		if err := o.watcher.Close(); err != nil {
+			log.Printf("Error closing watcher: %v", err)
+		}
+	})
 }
 
-// watch listens for filesystem events.
 func (o *Orchestrator) watch() {
 	for {
 		select {
@@ -65,76 +81,117 @@ func (o *Orchestrator) watch() {
 			if !ok {
 				return
 			}
-			// Only care about creation and writes for .md files
-			if strings.HasSuffix(event.Name, ".md") {
-				if event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create {
-					log.Printf("File event detected: %s (%s)", event.Name, event.Op)
-					o.handleFile(event.Name)
+			if event.Op&fsnotify.Create != 0 {
+				if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
+					if err := o.addWatches(event.Name); err != nil {
+						log.Printf("Error watching new directory %s: %v", event.Name, err)
+					}
+					continue
 				}
+			}
+			if strings.EqualFold(filepath.Ext(event.Name), ".md") &&
+				event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename) != 0 {
+				log.Printf("File event detected: %s (%s)", event.Name, event.Op)
+				o.handleFile(event.Name)
 			}
 		case err, ok := <-o.watcher.Errors:
 			if !ok {
 				return
 			}
 			log.Printf("Watcher error: %v", err)
-		case <-o.stopChan:
+		case <-o.ctx.Done():
 			return
 		}
 	}
 }
 
-// processVault performs a sequential crawl of the vault directory.
-func (o *Orchestrator) processVault() error {
-	return filepath.Walk(o.vaultPath, func(path string, info os.FileInfo, err error) error {
+func (o *Orchestrator) addWatches(root string) error {
+	return filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if !info.IsDir() && strings.HasSuffix(path, ".md") {
+		if entry.IsDir() {
+			if err := o.watcher.Add(path); err != nil {
+				return fmt.Errorf("watch %s: %w", path, err)
+			}
+		}
+		return nil
+	})
+}
+
+func (o *Orchestrator) processVault() error {
+	return filepath.WalkDir(o.vaultPath, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !entry.IsDir() && strings.EqualFold(filepath.Ext(path), ".md") {
 			o.handleFile(path)
 		}
 		return nil
 	})
 }
 
-// handleFile processes a single Markdown file.
 func (o *Orchestrator) handleFile(path string) {
-	data, err := ioutil.ReadFile(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		log.Printf("Error reading file %s: %v", path, err)
 		return
 	}
 
-	var jp models.JobPost
-	err = models.UnmarshalMarkdown(data, &jp)
-	if err != nil {
-		// Might not be a valid job post file, skip silently or log at debug level
+	var job models.JobPost
+	if err := models.UnmarshalMarkdown(data, &job); err != nil {
+		return
+	}
+	if job.State != "favorite" && !(job.State == "" && job.Favorite) {
 		return
 	}
 
-	// Check if state == "favorite" or favorite == true
-	if jp.State == "favorite" || jp.Favorite {
-		if jp.State == "intel-ready" {
-			// Already processed
-			return
-		}
-
-		fmt.Printf("MOCK: Processing Phase 2 Intel for [%s] - [%s]\n", jp.Company, jp.Title)
-
-		// Programmatically update state
-		jp.State = "intel-ready"
-
-		// Save back to disk
-		updatedData, err := jp.MarshalMarkdown()
-		if err != nil {
-			log.Printf("Error marshaling job post %s: %v", path, err)
-			return
-		}
-
-		err = ioutil.WriteFile(path, updatedData, 0644)
-		if err != nil {
-			log.Printf("Error writing file %s: %v", path, err)
-			return
-		}
-		log.Printf("Updated state to 'intel-ready' for %s", path)
+	log.Printf("Generating intelligence for [%s] - [%s]", job.Company, job.Title)
+	intel, err := o.generator.GenerateIntel(o.ctx, job)
+	if err != nil {
+		log.Printf("Error generating intelligence for %s: %v", path, err)
+		return
 	}
+
+	updatedData, err := models.UpdateStateAndAppendIntel(data, "intel-ready", intel)
+	if err != nil {
+		log.Printf("Error updating job post %s: %v", path, err)
+		return
+	}
+	if err := atomicWrite(path, updatedData); err != nil {
+		log.Printf("Error writing job post %s: %v", path, err)
+		return
+	}
+	log.Printf("Generated intelligence and updated state to 'intel-ready' for %s", path)
+}
+
+func atomicWrite(path string, data []byte) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+
+	file, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	tempPath := file.Name()
+	defer os.Remove(tempPath)
+
+	if err := file.Chmod(info.Mode().Perm()); err != nil {
+		file.Close()
+		return err
+	}
+	if _, err := file.Write(data); err != nil {
+		file.Close()
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		file.Close()
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tempPath, path)
 }

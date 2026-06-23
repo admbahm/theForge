@@ -1,0 +1,40 @@
+# Go build and test output
+bin/
+build/
+dist/
+out/
+/theforge
+*.test
+*.prof
+*.trace
+coverage.out
+coverage.html
+
+# Local runtime data and generated artifacts
+tmp/
+temp/
+*.tmp
+*.log
+*.pid
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# IDE and editor state
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+
+# Operating system metadata
+.DS_Store
+Thumbs.db
+
+# Local AI model and tool state
+.ollama/
+.cache/
