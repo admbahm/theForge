@@ -42,8 +42,14 @@ graph TD
 ├── DESIGN.md              # High-level architecture and design philosophy
 ├── LICENSE                # MIT License
 ├── README.md              # Project documentation
+├── cmd
+│   └── theforge
+│       └── main.go        # CLI startup and signal handling
 ├── go.mod                 # Go module definition
 ├── go.sum                 # Go module checksums
+├── internal
+│   └── config
+│       └── config.go      # Environment and .env configuration
 └── pkg
     ├── engine
     │   └── orchestrator.go # Vault watching and orchestration logic
@@ -61,6 +67,38 @@ The Forge implements a "Filesystem-as-Database" pattern. Instead of an external 
 4.  **Persistence**: After processing, The Forge updates the struct's `state` (e.g., to `intel-ready`) and marshals it back into the Markdown file, preserving your content while updating the metadata.
 
 This ensures that Obsidian remains the source of truth and the primary UI for the pipeline.
+
+## Running The Forge
+
+Create `.env` from the committed example and set it to the directory where OpenHunt writes Markdown files:
+
+```sh
+cp .env.example .env
+go run ./cmd/theforge
+```
+
+Before The Forge will process an incoming OpenHunt note, mark it as selected by adding this field inside its YAML frontmatter:
+
+```yaml
+state: favorite
+```
+
+For example:
+
+```yaml
+---
+job_id: JR333947
+company: Salesforce
+title: DevOps Engineer, GovCloud Mid/Senior
+state: favorite
+---
+```
+
+Notes without `state: favorite` are intentionally ignored. This is the human approval gate that prevents every scraped posting from being sent to Ollama. After successful intelligence generation, The Forge replaces the value with `state: intel-ready`.
+
+The CLI loads `.env` from the current working directory unless `OPENHUNT_OUTPUT_DIR` is already exported, validates that the configured path is a directory, performs the initial scan, and watches until interrupted with `Ctrl-C` or a termination signal.
+
+The current processor sends matching `favorite` jobs to the configured Ollama server using `gemma4:e4b`, appends a `The Forge Intelligence` section, and changes their state to `intel-ready`. Application payload generation remains planned functionality.
 
 ## Authors & Licensing
 

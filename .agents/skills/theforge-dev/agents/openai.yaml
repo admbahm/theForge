@@ -1,0 +1,4 @@
+interface:
+  display_name: "The Forge Development"
+  short_description: "Build and validate The Forge safely"
+  default_prompt: "Use $theforge-dev to implement and verify a change in The Forge."
