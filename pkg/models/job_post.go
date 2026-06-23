@@ -1,10 +1,9 @@
 package models
 
 import (
+	"gopkg.in/yaml.v3"
 	"fmt"
 	"strings"
-
-	"gopkg.in/yaml.v3"
 )
 
 // JobPost represents the core data structure for a job application tracking state.
@@ -51,7 +50,11 @@ func UnmarshalMarkdown(data []byte, j *JobPost) error {
 
 	parts := strings.SplitN(content[4:], "---\n", 2)
 	if len(parts) < 2 {
-		return fmt.Errorf("invalid frontmatter format")
+		// Try without the newline in case it's the end of file or different newline style
+		parts = strings.SplitN(content[4:], "---", 2)
+		if len(parts) < 2 {
+			return fmt.Errorf("invalid frontmatter format")
+		}
 	}
 
 	err := yaml.Unmarshal([]byte(parts[0]), j)
