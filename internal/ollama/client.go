@@ -60,7 +60,7 @@ type generateResponse struct {
 	Error    string `json:"error"`
 }
 
-// GenerateIntel asks Ollama for concise Markdown intelligence about a job.
+// GenerateIntel asks Ollama for concise, evidence-aware Markdown intelligence about a job.
 func (c *Client) GenerateIntel(ctx context.Context, job models.JobPost) (string, error) {
 	requestBody := generateRequest{
 		Model:  c.model,
@@ -119,16 +119,33 @@ func (c *Client) GenerateIntel(ctx context.Context, job models.JobPost) (string,
 }
 
 func buildPrompt(job models.JobPost) string {
-	return fmt.Sprintf(`You are producing evidence-based job intelligence for a candidate.
+	return fmt.Sprintf(`You are producing career intelligence for an ethical, evidence-based AI-assisted job application workflow.
+
+The Forge is not a generic resume generator. Its core rule is strict evidence discipline:
+- Never invent candidate experience.
+- Never fabricate employers, roles, dates, metrics, technologies, certifications, education, clearance status, citizenship, accomplishments, or production experience.
+- Parse the job posting into requirements, responsibilities, keywords, domain signals, and implied expectations.
+- Treat unsupported requirements as gaps or transferable skills, not as direct experience.
+- Metrics may be used only when explicitly present in verified source material.
+- Approximate or inferred claims must be labeled as inferred internally and must not appear as hard facts.
+- Prefer concrete evidence and hiring-manager usefulness over keyword stuffing.
+
+Verified candidate source material is not included in this phase. Base this intelligence only on the job posting below and identify what evidence should be requested from the candidate before application materials are generated.
+
+Important examples:
+- If a posting asks for AWS but verified candidate evidence only shows GCP, Kubernetes, or Terraform, do not claim AWS production experience. Frame cloud infrastructure skills as transferable and mark AWS as a gap until verified.
+- If a metric is missing, do not invent percentages, dollar amounts, team sizes, uptime, or incident-reduction numbers.
 
 Return concise Markdown only, without a surrounding code fence. Use these headings:
 ### Role Summary
-### Required Capabilities
-### Candidate Positioning
-### Risks and Unknowns
+### Requirement Signals
+### Evidence Needed
+### Transferable Positioning
+### Gaps and Unsupported Claims
+### Candidate Follow-Up Questions
 ### Interview Themes
 
-Do not invent facts. Clearly label missing information. Base the analysis only on the posting below.
+Keep the tone clear, ethical, candidate-first, hiring-manager aware, and anti-keyword-stuffing.
 
 Company: %s
 Title: %s

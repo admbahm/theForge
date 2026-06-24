@@ -1,11 +1,30 @@
-# The Forge: Local-First AI Orchestration Pipeline
+# The Forge: Local-First Career Intelligence Pipeline
 
 ## Overview
-"The Forge" is an event-driven AI orchestration pipeline designed to automate the job application lifecycle. It operates on a local-first principle, using an Obsidian vault as its primary state-driven database. The system parses job postings, manages their state via Markdown frontmatter, and integrates with local AI (Ollama) to generate company intelligence and tailored application materials.
+"The Forge" is an event-driven career intelligence system for ethical, evidence-based AI-assisted job applications. It operates on a local-first principle, using an Obsidian vault as its primary state-driven database. The system parses job postings, manages their state via Markdown frontmatter, and integrates with local AI (Ollama) to generate job intelligence. Planned application artifacts must be generated only from verified candidate evidence.
+
+The product is not a generic resume generator. Its goal is to help candidates apply to fewer roles with stronger precision, stronger evidence, and better preparation. It should preserve candidate authenticity, voice, constraints, and career direction while remaining useful to hiring managers.
+
+## Evidence and Authenticity Model
+
+Candidate-facing outputs must be traceable to verified source material:
+
+- Master resume
+- Achievement inventory
+- Project portfolio
+- Certifications
+- GitHub/project evidence
+- Writing samples
+- Candidate preferences
+- Job description
+
+Agents may reframe, emphasize, summarize, and tailor verified evidence, but invention of candidate experience is forbidden. Agents must never fabricate employers, roles, dates, metrics, technologies, certifications, education, clearance status, citizenship, accomplishments, production experience, or direct experience with a requirement that is not supported by the candidate knowledge base.
+
+If a job requirement is unsupported, the system must identify it as a gap or clearly framed transferable skill. A posting that requires AWS cannot become an AWS production claim when the candidate evidence only shows GCP, Kubernetes, and Terraform. Missing metrics must stay missing: no invented percentages, dollar amounts, team sizes, uptime claims, or incident-reduction numbers.
 
 ## Database Contract: The Obsidian Vault
 Unlike traditional systems that rely on a centralized SQL or NoSQL database, The Forge uses the local filesystem as its database. 
-- **Filesystem as State**: Each job application is represented by a single Markdown file.
+- **Filesystem as State**: Each job opportunity is represented by a single Markdown file.
 - **Frontmatter as Schema**: The application's state, metadata, and configuration are stored in the YAML frontmatter of these files.
 - **Obsidian as UI**: The Obsidian vault provides a rich, human-readable interface for viewing and manually updating the pipeline's state.
 
@@ -19,13 +38,39 @@ Unlike traditional systems that rely on a centralized SQL or NoSQL database, The
 
 ### Phase 2: Intel Generation & Enrichment
 - **Integration**: Local Ollama instance running the `gemma4` model.
-- **Action**: For jobs in the `intel-ready` state, The Forge triggers AI tasks to analyze the job description and generate company intelligence.
-- **State Transition**: Updates the file's frontmatter and content with the generated intel, moving the state to `apply`.
+- **Action**: For jobs selected with `state: favorite`, The Forge triggers AI tasks to parse the job description into requirements, responsibilities, keywords, domain signals, implied expectations, evidence needs, transferable positioning, gaps, unsupported claims, candidate follow-up questions, and interview themes.
+- **State Transition**: Updates the file's frontmatter and content with the generated intel, moving the state to `intel-ready`.
 
-### Phase 3: Payload Tailoring & Execution
-- **Action**: Generates tailored resume payloads and cover letters based on the gathered intel and a master resume.
-- **Output**: Tailored PDF/Markdown payloads ready for submission.
-- **State Transition**: Once applied, the job state moves to `completed`.
+### Phase 3: Evidence Mapping & Artifact Drafting (Planned)
+- **Action**: Match each job requirement to verified candidate evidence before producing application materials.
+- **Required Intermediate Output**: A traceable evidence map that records source facts, unsupported requirements, transferable skills, and candidate follow-up questions.
+- **Candidate-Facing Outputs**: Tailored resume, cover letter, recruiter outreach message, interview prep guide, and requirement match/gap analysis.
+- **State Transition**: After review and application, the job state can move to `completed`.
+
+## Agent Responsibilities
+
+- Parse the job description into requirements, responsibilities, keywords, domain signals, and implied expectations.
+- Match each job requirement to verified candidate evidence.
+- Generate a traceable evidence map before generating application materials.
+- Produce tailored resumes, cover letters, recruiter messages, interview prep, and gap analysis only from verified evidence.
+- Flag unsupported claims instead of inventing content.
+- Preserve candidate authenticity, voice, constraints, and career direction.
+
+## Positioning Rules
+
+The same verified accomplishment may be reframed for different job families, including Engineering Management, Platform Engineering, SRE/Reliability, Quality Engineering, Developer Productivity, Cloud Infrastructure, and AI Infrastructure. Reframing must preserve truth. The system should generate targeted application artifacts, not rewrite the candidate into a different person.
+
+## Output Contract
+
+The planned application workflow should produce:
+
+- Evidence map
+- Tailored resume
+- Cover letter
+- Recruiter outreach message
+- Interview prep guide
+- Requirement match/gap analysis
+- Suggested follow-up questions for the candidate when source evidence is incomplete
 
 ## Technology Stack
 - **Language**: Go
