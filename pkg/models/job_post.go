@@ -8,7 +8,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// JobPost represents the core data structure for a job application tracking state.
+// JobPost represents the core data structure for a job opportunity tracking state.
 // It maps to YAML frontmatter in Obsidian Markdown files.
 type JobPost struct {
 	JobID           string   `yaml:"job_id"`

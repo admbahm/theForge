@@ -6,8 +6,20 @@ These rules apply to all work in this repository.
 
 - Treat The Forge as a local-first Go application that uses Markdown files with YAML frontmatter as its state store.
 - Keep the Obsidian vault human-readable and usable without The Forge running.
-- Distinguish implemented behavior from planned behavior. Ollama integration, intelligence generation, and application payload generation are not implemented yet.
+- Treat The Forge as a career intelligence system for ethical, evidence-based AI-assisted job applications, not as a generic resume generator.
+- Distinguish implemented behavior from planned behavior. Ollama integration and the `favorite` to `intel-ready` intelligence step are implemented; evidence mapping and application artifact generation remain planned.
 - Maintain compatibility with the OpenHunt frontmatter contract documented in `README.md` and `DESIGN.md`.
+
+## Evidence and Product Rules
+
+- Invention of candidate experience is strictly forbidden.
+- Agents may reframe, emphasize, summarize, and tailor verified evidence, but must never fabricate employers, roles, dates, metrics, technologies, certifications, education, clearance status, citizenship, accomplishments, or production experience.
+- Treat master resume, achievement inventory, project portfolio, certifications, GitHub/project evidence, writing samples, candidate preferences, and the job description as the source-of-truth set for future application artifacts.
+- Every generated resume bullet must map back to one or more source facts.
+- Metrics may only be used when explicitly present in source material; never invent percentages, dollar amounts, team sizes, uptime, incident reductions, or similar numbers.
+- If a job requirement is not supported by verified evidence, identify it as a gap or transferable skill instead of claiming direct experience.
+- Prefer concrete evidence and hiring-manager usefulness over keyword stuffing.
+- Preserve candidate authenticity, voice, constraints, and career direction.
 
 ## Go Development
 
@@ -32,6 +44,7 @@ These rules apply to all work in this repository.
 - Make processing idempotent so repeated filesystem events cannot move a job backward or duplicate generated content.
 - Validate required fields before performing a transition.
 - Add tests for every new transition and rejection path.
+- Add or update tests when prompts or artifact generation rules change, including unsupported technology requirements and missing metric cases.
 
 ## Validation
 

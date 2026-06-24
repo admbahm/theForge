@@ -51,6 +51,42 @@ func TestGenerateIntelUsesConfiguredModel(t *testing.T) {
 	}
 }
 
+func TestBuildPromptRequiresTransferableFramingForUnsupportedAWS(t *testing.T) {
+	prompt := buildPrompt(models.JobPost{
+		Company: "Example",
+		Title:   "Platform Engineer",
+		Content: "Must have AWS production experience.",
+	})
+
+	for _, expected := range []string{
+		"do not claim AWS production experience",
+		"Frame cloud infrastructure skills as transferable",
+		"mark AWS as a gap until verified",
+	} {
+		if !strings.Contains(prompt, expected) {
+			t.Fatalf("prompt missing %q:\n%s", expected, prompt)
+		}
+	}
+}
+
+func TestBuildPromptForbidsInventedMetrics(t *testing.T) {
+	prompt := buildPrompt(models.JobPost{
+		Company: "Example",
+		Title:   "Reliability Engineer",
+		Content: "Improve incident response and uptime.",
+	})
+
+	for _, expected := range []string{
+		"Metrics may be used only when explicitly present",
+		"do not invent percentages, dollar amounts, team sizes, uptime, or incident-reduction numbers",
+		"Never fabricate employers, roles, dates, metrics",
+	} {
+		if !strings.Contains(prompt, expected) {
+			t.Fatalf("prompt missing %q:\n%s", expected, prompt)
+		}
+	}
+}
+
 func TestGenerateIntelReturnsAPIError(t *testing.T) {
 	client, err := NewClient("http://ollama.test", DefaultModel)
 	if err != nil {
