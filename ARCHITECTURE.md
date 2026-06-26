@@ -20,14 +20,14 @@ graph TD
     subgraph The Forge Engine
         D[Recursive fsnotify Watcher]
         E[Job Post Parser / Serializer]
-        F[Ollama Client]
+        F[LLM Provider Client]
     end
 
     A -->|User manual review| B
     B -->|File Event Trigger| D
     D -->|Read & Parse Frontmatter| E
     E -->|Extracted Job Data| F
-    F -->|Run local LLM inference| E
+    F -->|Generate intelligence| E
     E -->|Atomic Write back to disk| C
 ```
 
@@ -36,13 +36,15 @@ graph TD
 ## 2. Directory Layout & Package Responsibilities
 
 *   `cmd/theforge/main.go`
-    *   **Responsibility**: CLI entrypoint, loads configuration from `.env`, initializes background OS signal interception (`SIGINT`, `SIGTERM`), instantiates the Ollama client, and starts/stops the orchestrator lifecycle.
+    *   **Responsibility**: CLI entrypoint, loads YAML/environment/dotenv configuration, initializes background OS signal interception (`SIGINT`, `SIGTERM`), obtains the selected LLM client, and starts/stops the orchestrator lifecycle.
 *   `internal/config/config.go`
-    *   **Responsibility**: Loads configuration values, parses and validates environment variables (`OPENHUNT_OUTPUT_DIR`, `OLLAMA_API_URL`, `OLLAMA_MODEL`), resolves paths to absolute targets, and validates directory existence.
+    *   **Responsibility**: Loads `theforge.yaml`, `.env`, and environment overrides; preserves Ollama defaults; records provider model and API-key environment variable names; resolves paths; and validates directory existence.
+*   `internal/llm/client.go`
+    *   **Responsibility**: Defines the provider-neutral client contract and selects Ollama, OpenAI, or Gemini. Ollama is the fully implemented default. OpenAI and Gemini are BYOK stubs that validate their selected key environment variable and return a clear not-implemented generation error.
 *   `internal/ollama/client.go`
-    *   **Responsibility**: Implements the `IntelGenerator` interface. Wraps HTTP queries to the local Ollama API (specifically `/api/generate` default endpoint), sets generation parameters (like low temperature for predictability), constructs structured prompts, and cleans output code blocks.
+    *   **Responsibility**: Implements the provider-neutral client contract. Wraps HTTP queries to the local Ollama API (specifically `/api/generate` default endpoint), sets generation parameters (like low temperature for predictability), constructs structured prompts, and cleans output code blocks.
 *   `pkg/engine/orchestrator.go`
-    *   **Responsibility**: Implements recursive filesystem directory watching via `fsnotify` and coordinates vault scanning. Listens for events on Markdown files, parses state criteria, calls the AI intelligence generator, and persists changes.
+    *   **Responsibility**: Implements recursive filesystem directory watching via `fsnotify` and coordinates vault scanning. The event loop enqueues Markdown paths while a worker parses state criteria, calls the provider-neutral intelligence generator, and persists changes. A pending/in-flight set coalesces event storms by filepath.
 *   `pkg/models/job_post.go`
     *   **Responsibility**: Defines the core schema (`JobPost` struct). Provides helpers to separate YAML frontmatter metadata from the Markdown body (`splitMarkdown`), parses structures, and updates individual state properties using low-level YAML AST mapping.
 
@@ -55,20 +57,22 @@ sequenceDiagram
     participant User/Editor
     participant Watcher as pkg/engine (Orchestrator)
     participant Model as pkg/models (JobPost)
-    participant AI as internal/ollama (Client)
+    participant Queue as pkg/engine (Job Queue)
+    participant AI as internal/llm (Client)
     
     User/Editor->>Watcher: Write/Modify Markdown (state: favorite)
     Watcher->>Watcher: Trigger Event
-    Watcher->>Model: UnmarshalMarkdown(data, &job)
+    Watcher->>Queue: Enqueue path unless pending/in-flight
+    Queue->>Model: UnmarshalMarkdown(data, &job)
     Note over Model: Split YAML frontmatter from body
-    Watcher->>Watcher: Verify JobPost.State == "favorite"
-    Watcher->>AI: GenerateIntel(ctx, job)
-    AI-->>Watcher: Return Markdown Intelligence
-    Watcher->>Model: UpdateStateAndAppendIntel(data, "intel-ready", intel)
+    Queue->>Queue: Verify JobPost.State == "favorite"
+    Queue->>AI: GenerateIntel(ctx, job)
+    AI-->>Queue: Return Markdown Intelligence
+    Queue->>Model: UpdateStateAndAppendIntel(data, "intel-ready", intel)
     Note over Model: Preserve all unknown frontmatter fields via yaml.Node AST
-    Watcher->>Watcher: atomicWrite(path, updatedData)
+    Queue->>Queue: atomicWrite(path, updatedData)
     Note over Watcher: Create temp file, write, chmod, sync, rename
-    Watcher-->>User/Editor: File updated on disk (state: intel-ready)
+    Queue-->>User/Editor: File updated on disk (state: intel-ready)
 ```
 
 ### Key Safety Constraints:

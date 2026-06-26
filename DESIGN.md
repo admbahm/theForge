@@ -1,7 +1,7 @@
 # The Forge: Local-First Career Intelligence Pipeline
 
 ## Overview
-"The Forge" is an event-driven career intelligence system for ethical, evidence-based AI-assisted job applications. It operates on a local-first principle, using an Obsidian vault as its primary state-driven database. The system parses job postings, manages their state via Markdown frontmatter, and integrates with local AI (Ollama) to generate job intelligence. Planned application artifacts must be generated only from verified candidate evidence.
+"The Forge" is an event-driven career intelligence system for ethical, evidence-based AI-assisted job applications. It operates on a local-first principle, using an Obsidian vault as its primary state-driven database. The system parses job postings, manages their state via Markdown frontmatter, and uses a provider-neutral AI analysis layer to generate job intelligence. Ollama is the fully implemented local provider. Planned application artifacts must be generated only from verified candidate evidence.
 
 The product is not a generic resume generator. Its goal is to help candidates apply to fewer roles with stronger precision, stronger evidence, and better preparation. It should preserve candidate authenticity, voice, constraints, and career direction while remaining useful to hiring managers.
 
@@ -37,7 +37,7 @@ Unlike traditional systems that rely on a centralized SQL or NoSQL database, The
 - **State Transition**: After successful intelligence generation, The Forge changes `state: favorite` to `state: intel-ready`.
 
 ### Phase 2: Intel Generation & Enrichment
-- **Integration**: Local Ollama instance running the `gemma4` model.
+- **Integration**: Provider-neutral LLM client, with a local Ollama instance running the `gemma4` model as the fully implemented default.
 - **Action**: For jobs selected with `state: favorite`, The Forge triggers AI tasks to parse the job description into requirements, responsibilities, keywords, domain signals, implied expectations, evidence needs, transferable positioning, gaps, unsupported claims, candidate follow-up questions, and interview themes.
 - **State Transition**: Updates the file's frontmatter and content with the generated intel, moving the state to `intel-ready`.
 
@@ -72,8 +72,12 @@ The planned application workflow should produce:
 - Requirement match/gap analysis
 - Suggested follow-up questions for the candidate when source evidence is incomplete
 
+## LLM Providers
+
+The analysis layer uses a provider-neutral client contract. Ollama with `gemma4:e4b` is the default local implementation and requires no paid API key. OpenAI and Gemini have BYOK configuration seams that read keys from named environment variables only when selected; their HTTP generation clients remain planned.
+
 ## Technology Stack
 - **Language**: Go
 - **Frontmatter Parsing**: YAML v3
-- **AI Model**: Gemma4 (via Ollama)
+- **AI Model**: Provider-neutral; Gemma4 via Ollama by default
 - **State Store**: Local Filesystem / Obsidian Vault

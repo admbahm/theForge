@@ -14,7 +14,7 @@
 
 ## Project Overview
 
-The Forge monitors your Obsidian vault for job postings ingested by "OpenHunt". It tracks the lifecycle of each selected application through frontmatter metadata, triggering local AI processing via **Ollama** (running the **Gemma 4** model) to generate job intelligence and, in planned phases, traceable evidence maps and targeted application artifacts.
+The Forge monitors your Obsidian vault for job postings ingested by "OpenHunt". It tracks the lifecycle of each selected application through frontmatter metadata, triggering an LLM provider to generate job intelligence and, in planned phases, traceable evidence maps and targeted application artifacts. **Ollama** running **Gemma 4** remains the default local provider, so the normal workflow requires no paid API key.
 
 The Forge is not a generic resume generator and is not intended for application spam. Its product direction is quality over volume: help candidates apply to fewer roles with stronger precision, stronger verified evidence, and better preparation.
 
@@ -56,7 +56,7 @@ graph TD
     A[OpenHunt Crawling] -->|Inbound MD| B(Inbox Folder: #new)
     B --> C{Human Gate 1: Vetting}
     C -->|Update state to #favorite| D[The Forge Watcher]
-    D -->|Trigger Ollama: Intel Generation| E[Job Intelligence Generated]
+    D -->|Trigger configured LLM provider| E[Job Intelligence Generated]
     E -->|Rewrite to Vault| F(Vault: #intel-ready)
     F --> G{Human Gate 2: Reviewing Intel}
     G -->|Update state to #apply| H[The Forge Anvil]
@@ -80,8 +80,12 @@ The currently implemented processor performs the `favorite` to `intel-ready` int
 ├── go.mod                 # Go module definition
 ├── go.sum                 # Go module checksums
 ├── internal
-│   └── config
-│       └── config.go      # Environment and .env configuration
+│   ├── config
+│   │   └── config.go      # YAML, environment, and .env configuration
+│   ├── llm
+│   │   └── client.go      # Provider-neutral client and factory
+│   └── ollama
+│       └── client.go      # Default local Ollama implementation
 └── pkg
     ├── engine
     │   └── orchestrator.go # Vault watching and orchestration logic
@@ -109,6 +113,58 @@ cp .env.example .env
 go run ./cmd/theforge
 ```
 
+The default configuration selects local Ollama at `http://localhost:11434` with `gemma4:e4b`; no OpenAI, Gemini, or paid API key is required. The existing `OLLAMA_API_URL` and `OLLAMA_MODEL` variables remain supported.
+
+Provider settings can optionally be kept in `theforge.yaml`:
+
+```sh
+cp theforge.yaml.example theforge.yaml
+```
+
+```yaml
+llm:
+  provider: ollama
+  model: gemma4:e4b
+providers:
+  ollama:
+    host: http://localhost:11434
+    model: gemma4:e4b
+  openai:
+    api_key_env: OPENAI_API_KEY
+    model: gpt-4.1-mini
+  gemini:
+    api_key_env: GEMINI_API_KEY
+    model: gemini-2.5-flash
+```
+
+Environment variables override YAML. Use `LLM_PROVIDER` and optional `LLM_MODEL` to select a provider and model.
+
+### Using Your Own API Key
+
+OpenAI and Gemini use bring-your-own-key environment variables. Do not put the key itself in `theforge.yaml`, `.env.example`, source code, or any committed file. Export the key in the shell that starts The Forge.
+
+For OpenAI:
+
+```sh
+export OPENAI_API_KEY="your-openai-api-key"
+export LLM_PROVIDER="openai"
+export LLM_MODEL="gpt-4.1-mini"
+go run ./cmd/theforge
+```
+
+For Gemini:
+
+```sh
+export GEMINI_API_KEY="your-gemini-api-key"
+export LLM_PROVIDER="gemini"
+export LLM_MODEL="gemini-2.5-flash"
+go run ./cmd/theforge
+```
+
+The `api_key_env` setting names the environment variable to read; it is not the key. For example, `api_key_env: MY_OPENAI_KEY` requires `export MY_OPENAI_KEY="..."`. Missing keys produce an error only when their provider is selected.
+
+OpenAI and Gemini currently have configuration and key-validation stubs only. After successful selection they return a clear error that HTTP generation is not implemented. Ollama is the only fully implemented provider and remains the default local mode with no paid API key required.
+
 Before The Forge will process an incoming OpenHunt note, mark it as selected by adding this field inside its YAML frontmatter:
 
 ```yaml
@@ -126,11 +182,11 @@ state: favorite
 ---
 ```
 
-Notes without `state: favorite` are intentionally ignored. This is the human approval gate that prevents every scraped posting from being sent to Ollama. After successful intelligence generation, The Forge replaces the value with `state: intel-ready`.
+Notes without `state: favorite` are intentionally ignored. This is the human approval gate that prevents every scraped posting from being sent to the configured provider. After successful intelligence generation, The Forge replaces the value with `state: intel-ready`.
 
-The CLI loads `.env` from the current working directory unless `OPENHUNT_OUTPUT_DIR` is already exported, validates that the configured path is a directory, performs the initial scan, and watches until interrupted with `Ctrl-C` or a termination signal.
+The CLI loads optional `theforge.yaml` and `.env` files from the current working directory, applies exported environment variables as overrides, validates that the configured output path is a directory, performs the initial scan, and watches until interrupted with `Ctrl-C` or a termination signal.
 
-The current processor sends matching `favorite` jobs to the configured Ollama server using `gemma4:e4b`, appends a `The Forge Intelligence` section, and changes their state to `intel-ready`. The active prompt asks for role signals, evidence needs, transferable positioning, gaps, unsupported claims, candidate follow-up questions, and interview themes. Application artifact generation remains planned functionality and must use verified evidence maps before producing candidate-facing materials.
+The current processor queues matching `favorite` jobs for the configured provider, appends a `The Forge Intelligence` section, and changes their state to `intel-ready`. Duplicate filesystem events for a queued or in-flight path are coalesced. The active prompt asks for role signals, evidence needs, transferable positioning, gaps, unsupported claims, candidate follow-up questions, and interview themes. Application artifact generation remains planned functionality and must use verified evidence maps before producing candidate-facing materials.
 
 ## Authors & Licensing
 

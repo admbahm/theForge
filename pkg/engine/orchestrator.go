@@ -26,7 +26,13 @@ type Orchestrator struct {
 	ctx       context.Context
 	cancel    context.CancelFunc
 	stopOnce  sync.Once
+	jobs      chan string
+	pendingMu sync.Mutex
+	pending   map[string]struct{}
+	workers   sync.WaitGroup
 }
+
+const jobQueueSize = 32
 
 // NewOrchestrator creates a new Orchestrator instance.
 func NewOrchestrator(vaultPath string, generator IntelGenerator) (*Orchestrator, error) {
@@ -46,6 +52,8 @@ func NewOrchestrator(vaultPath string, generator IntelGenerator) (*Orchestrator,
 		watcher:   watcher,
 		ctx:       ctx,
 		cancel:    cancel,
+		jobs:      make(chan string, jobQueueSize),
+		pending:   make(map[string]struct{}),
 	}, nil
 }
 
@@ -54,12 +62,15 @@ func (o *Orchestrator) Start() error {
 	if err := o.addWatches(o.vaultPath); err != nil {
 		return fmt.Errorf("add vault watches: %w", err)
 	}
+	o.workers.Add(1)
+	go o.processJobs()
 
 	log.Printf("Starting initial vault scan: %s", o.vaultPath)
 	if err := o.processVault(); err != nil {
 		return fmt.Errorf("initial scan failed: %w", err)
 	}
 
+	o.workers.Add(1)
 	go o.watch()
 	return nil
 }
@@ -71,10 +82,12 @@ func (o *Orchestrator) Stop() {
 		if err := o.watcher.Close(); err != nil {
 			log.Printf("Error closing watcher: %v", err)
 		}
+		o.workers.Wait()
 	})
 }
 
 func (o *Orchestrator) watch() {
+	defer o.workers.Done()
 	for {
 		select {
 		case event, ok := <-o.watcher.Events:
@@ -92,7 +105,7 @@ func (o *Orchestrator) watch() {
 			if strings.EqualFold(filepath.Ext(event.Name), ".md") &&
 				event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename) != 0 {
 				log.Printf("File event detected: %s (%s)", event.Name, event.Op)
-				o.handleFile(event.Name)
+				o.enqueue(event.Name)
 			}
 		case err, ok := <-o.watcher.Errors:
 			if !ok {
@@ -125,10 +138,46 @@ func (o *Orchestrator) processVault() error {
 			return err
 		}
 		if !entry.IsDir() && strings.EqualFold(filepath.Ext(path), ".md") {
-			o.handleFile(path)
+			o.enqueue(path)
 		}
 		return nil
 	})
+}
+
+func (o *Orchestrator) enqueue(path string) {
+	path = filepath.Clean(path)
+	o.pendingMu.Lock()
+	if _, exists := o.pending[path]; exists {
+		o.pendingMu.Unlock()
+		return
+	}
+	o.pending[path] = struct{}{}
+	o.pendingMu.Unlock()
+
+	select {
+	case o.jobs <- path:
+	case <-o.ctx.Done():
+		o.clearPending(path)
+	}
+}
+
+func (o *Orchestrator) processJobs() {
+	defer o.workers.Done()
+	for {
+		select {
+		case path := <-o.jobs:
+			o.handleFile(path)
+			o.clearPending(path)
+		case <-o.ctx.Done():
+			return
+		}
+	}
+}
+
+func (o *Orchestrator) clearPending(path string) {
+	o.pendingMu.Lock()
+	delete(o.pending, path)
+	o.pendingMu.Unlock()
 }
 
 func (o *Orchestrator) handleFile(path string) {

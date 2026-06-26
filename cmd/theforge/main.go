@@ -9,12 +9,12 @@ import (
 	"syscall"
 
 	"github.com/admbahm/theForge/internal/config"
-	"github.com/admbahm/theForge/internal/ollama"
+	"github.com/admbahm/theForge/internal/llm"
 	"github.com/admbahm/theForge/pkg/engine"
 )
 
 func main() {
-	cfg, err := config.Load(".env")
+	cfg, err := config.Load(".env", "theforge.yaml")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -28,12 +28,12 @@ func main() {
 }
 
 func run(ctx context.Context, cfg config.Config) error {
-	ollamaClient, err := ollama.NewClient(cfg.OllamaAPIURL, cfg.OllamaModel)
+	client, err := llm.NewClient(cfg)
 	if err != nil {
-		return fmt.Errorf("create Ollama client: %w", err)
+		return fmt.Errorf("create LLM client: %w", err)
 	}
 
-	orchestrator, err := engine.NewOrchestrator(cfg.OpenHuntOutputDir, ollamaClient)
+	orchestrator, err := engine.NewOrchestrator(cfg.OpenHuntOutputDir, client)
 	if err != nil {
 		return fmt.Errorf("create orchestrator: %w", err)
 	}
@@ -43,7 +43,11 @@ func run(ctx context.Context, cfg config.Config) error {
 		return fmt.Errorf("start orchestrator: %w", err)
 	}
 
-	log.Printf("Watching OpenHunt output directory: %s (Ollama model: %s)", cfg.OpenHuntOutputDir, cfg.OllamaModel)
+	provider := cfg.LLM.Provider
+	if provider == "" {
+		provider = config.DefaultLLMProvider
+	}
+	log.Printf("Watching OpenHunt output directory: %s (LLM provider: %s)", cfg.OpenHuntOutputDir, provider)
 	<-ctx.Done()
 	log.Printf("Shutdown requested")
 	return nil

@@ -56,6 +56,57 @@ func TestLoadRejectsMissingDirectory(t *testing.T) {
 	}
 }
 
+func TestLoadReadsProviderYAMLAndPreservesDefaults(t *testing.T) {
+	outputDir := t.TempDir()
+	yamlPath := filepath.Join(t.TempDir(), "theforge.yaml")
+	content := `openhunt_output_dir: ` + outputDir + `
+llm:
+  provider: gemini
+  model: custom-gemini
+providers:
+  gemini:
+    api_key_env: CUSTOM_GEMINI_KEY
+`
+	if err := os.WriteFile(yamlPath, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(openHuntOutputDirKey, "")
+
+	cfg, err := Load(filepath.Join(t.TempDir(), ".env"), yamlPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.LLM.Provider != "gemini" || cfg.LLM.Model != "custom-gemini" {
+		t.Fatalf("LLM = %+v", cfg.LLM)
+	}
+	if cfg.Providers.Gemini.APIKeyEnv != "CUSTOM_GEMINI_KEY" {
+		t.Fatalf("Gemini APIKeyEnv = %q", cfg.Providers.Gemini.APIKeyEnv)
+	}
+	if cfg.Providers.Ollama.Host != DefaultOllamaAPIURL || cfg.Providers.OpenAI.Model != DefaultOpenAIModel {
+		t.Fatalf("provider defaults were not preserved: %+v", cfg.Providers)
+	}
+}
+
+func TestLoadEnvironmentOverridesProviderYAML(t *testing.T) {
+	outputDir := t.TempDir()
+	yamlPath := filepath.Join(t.TempDir(), "theforge.yaml")
+	content := "openhunt_output_dir: " + outputDir + "\nllm:\n  provider: ollama\n"
+	if err := os.WriteFile(yamlPath, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(openHuntOutputDirKey, "")
+	t.Setenv(llmProviderKey, "openai")
+	t.Setenv(llmModelKey, "environment-model")
+
+	cfg, err := Load(filepath.Join(t.TempDir(), ".env"), yamlPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.LLM.Provider != "openai" || cfg.LLM.Model != "environment-model" {
+		t.Fatalf("LLM = %+v", cfg.LLM)
+	}
+}
+
 func TestParseDotEnvLine(t *testing.T) {
 	tests := []struct {
 		name      string
