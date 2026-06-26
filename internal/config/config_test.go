@@ -60,6 +60,7 @@ func TestLoadReadsProviderYAMLAndPreservesDefaults(t *testing.T) {
 	outputDir := t.TempDir()
 	yamlPath := filepath.Join(t.TempDir(), "theforge.yaml")
 	content := `openhunt_output_dir: ` + outputDir + `
+concurrency: 8
 llm:
   provider: gemini
   model: custom-gemini
@@ -75,6 +76,9 @@ providers:
 	cfg, err := Load(filepath.Join(t.TempDir(), ".env"), yamlPath)
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Concurrency != 8 {
+		t.Fatalf("Concurrency = %d, want 8", cfg.Concurrency)
 	}
 	if cfg.LLM.Provider != "gemini" || cfg.LLM.Model != "custom-gemini" {
 		t.Fatalf("LLM = %+v", cfg.LLM)
@@ -97,10 +101,14 @@ func TestLoadEnvironmentOverridesProviderYAML(t *testing.T) {
 	t.Setenv(openHuntOutputDirKey, "")
 	t.Setenv(llmProviderKey, "openai")
 	t.Setenv(llmModelKey, "environment-model")
+	t.Setenv("THEFORGE_CONCURRENCY", "12")
 
 	cfg, err := Load(filepath.Join(t.TempDir(), ".env"), yamlPath)
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Concurrency != 12 {
+		t.Fatalf("Concurrency = %d, want 12", cfg.Concurrency)
 	}
 	if cfg.LLM.Provider != "openai" || cfg.LLM.Model != "environment-model" {
 		t.Fatalf("LLM = %+v", cfg.LLM)

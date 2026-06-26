@@ -30,11 +30,15 @@ const (
 	DefaultOpenAIModel  = "gpt-4.1-mini"
 	DefaultGeminiKeyEnv = "GEMINI_API_KEY"
 	DefaultGeminiModel  = "gemini-2.5-flash"
+	DefaultConcurrency  = 4
+
+	concurrencyKey = "THEFORGE_CONCURRENCY"
 )
 
 // Config contains the runtime configuration for The Forge.
 type Config struct {
 	OpenHuntOutputDir string          `yaml:"openhunt_output_dir"`
+	Concurrency       int             `yaml:"concurrency"`
 	LLM               LLMConfig       `yaml:"llm"`
 	Providers         ProvidersConfig `yaml:"providers"`
 
@@ -105,7 +109,8 @@ func Load(dotenvPath string, yamlPaths ...string) (Config, error) {
 
 func defaultConfig() Config {
 	return Config{
-		LLM: LLMConfig{Provider: DefaultLLMProvider},
+		Concurrency: DefaultConcurrency,
+		LLM:         LLMConfig{Provider: DefaultLLMProvider},
 		Providers: ProvidersConfig{
 			Ollama: OllamaConfig{Host: DefaultOllamaAPIURL, Model: DefaultOllamaModel},
 			OpenAI: APIConfig{APIKeyEnv: DefaultOpenAIKeyEnv, Model: DefaultOpenAIModel},
@@ -127,6 +132,11 @@ func loadYAML(path string, cfg *Config) error {
 
 func applyEnvironment(cfg *Config) {
 	setFromEnvironment(&cfg.OpenHuntOutputDir, openHuntOutputDirKey)
+	if value, exists := os.LookupEnv(concurrencyKey); exists && strings.TrimSpace(value) != "" {
+		if val, err := strconv.Atoi(strings.TrimSpace(value)); err == nil && val > 0 {
+			cfg.Concurrency = val
+		}
+	}
 	setFromEnvironment(&cfg.LLM.Provider, llmProviderKey)
 	setFromEnvironment(&cfg.LLM.Model, llmModelKey)
 	setFromEnvironment(&cfg.Providers.Ollama.Host, ollamaAPIURLKey)

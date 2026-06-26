@@ -20,24 +20,33 @@ type IntelGenerator interface {
 
 // Orchestrator monitors the Obsidian vault and processes job posts.
 type Orchestrator struct {
-	vaultPath string
-	generator IntelGenerator
-	watcher   *fsnotify.Watcher
-	ctx       context.Context
-	cancel    context.CancelFunc
-	stopOnce  sync.Once
-	jobs      chan string
-	pendingMu sync.Mutex
-	pending   map[string]struct{}
-	workers   sync.WaitGroup
+	vaultPath   string
+	generator   IntelGenerator
+	concurrency int
+	watcher     *fsnotify.Watcher
+	ctx         context.Context
+	cancel      context.CancelFunc
+	stopOnce    sync.Once
+	jobs        chan string
+	pendingMu   sync.Mutex
+	pending     map[string]struct{}
+	workers     sync.WaitGroup
 }
 
 const jobQueueSize = 32
 
-// NewOrchestrator creates a new Orchestrator instance.
+// NewOrchestrator creates a new Orchestrator instance with the default concurrency level.
 func NewOrchestrator(vaultPath string, generator IntelGenerator) (*Orchestrator, error) {
+	return NewOrchestratorWithConcurrency(vaultPath, generator, 4)
+}
+
+// NewOrchestratorWithConcurrency creates a new Orchestrator instance with a custom concurrency limit.
+func NewOrchestratorWithConcurrency(vaultPath string, generator IntelGenerator, concurrency int) (*Orchestrator, error) {
 	if generator == nil {
 		return nil, fmt.Errorf("intel generator is required")
+	}
+	if concurrency <= 0 {
+		concurrency = 1
 	}
 
 	watcher, err := fsnotify.NewWatcher()
@@ -47,13 +56,14 @@ func NewOrchestrator(vaultPath string, generator IntelGenerator) (*Orchestrator,
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &Orchestrator{
-		vaultPath: vaultPath,
-		generator: generator,
-		watcher:   watcher,
-		ctx:       ctx,
-		cancel:    cancel,
-		jobs:      make(chan string, jobQueueSize),
-		pending:   make(map[string]struct{}),
+		vaultPath:   vaultPath,
+		generator:   generator,
+		concurrency: concurrency,
+		watcher:     watcher,
+		ctx:         ctx,
+		cancel:      cancel,
+		jobs:        make(chan string, jobQueueSize),
+		pending:     make(map[string]struct{}),
 	}, nil
 }
 
@@ -62,8 +72,10 @@ func (o *Orchestrator) Start() error {
 	if err := o.addWatches(o.vaultPath); err != nil {
 		return fmt.Errorf("add vault watches: %w", err)
 	}
-	o.workers.Add(1)
-	go o.processJobs()
+	for i := 0; i < o.concurrency; i++ {
+		o.workers.Add(1)
+		go o.processJobs()
+	}
 
 	log.Printf("Starting initial vault scan: %s", o.vaultPath)
 	if err := o.processVault(); err != nil {
@@ -183,7 +195,7 @@ func (o *Orchestrator) clearPending(path string) {
 func (o *Orchestrator) handleFile(path string) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		log.Printf("Error reading file %s: %v", path, err)
+		log.Printf("[Error] Failed to read job post file %s: %v", path, err)
 		return
 	}
 
@@ -195,23 +207,24 @@ func (o *Orchestrator) handleFile(path string) {
 		return
 	}
 
-	log.Printf("Generating intelligence for [%s] - [%s]", job.Company, job.Title)
+	fileName := filepath.Base(path)
+	log.Printf("[Processing] [%s] %s - %s: Generating intelligence...", fileName, job.Company, job.Title)
 	intel, err := o.generator.GenerateIntel(o.ctx, job)
 	if err != nil {
-		log.Printf("Error generating intelligence for %s: %v", path, err)
+		log.Printf("[Error] [%s] %s - %s: Intel generation failed: %v", fileName, job.Company, job.Title, err)
 		return
 	}
 
 	updatedData, err := models.UpdateStateAndAppendIntel(data, "intel-ready", intel)
 	if err != nil {
-		log.Printf("Error updating job post %s: %v", path, err)
+		log.Printf("[Error] [%s] %s - %s: Failed to update note payload: %v", fileName, job.Company, job.Title, err)
 		return
 	}
 	if err := atomicWrite(path, updatedData); err != nil {
-		log.Printf("Error writing job post %s: %v", path, err)
+		log.Printf("[Error] [%s] %s - %s: Failed to save changes: %v", fileName, job.Company, job.Title, err)
 		return
 	}
-	log.Printf("Generated intelligence and updated state to 'intel-ready' for %s", path)
+	log.Printf("[Success] [%s] %s - %s: Finished intelligence (Status: intel-ready)", fileName, job.Company, job.Title)
 }
 
 func atomicWrite(path string, data []byte) error {

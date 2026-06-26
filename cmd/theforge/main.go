@@ -33,7 +33,7 @@ func run(ctx context.Context, cfg config.Config) error {
 		return fmt.Errorf("create LLM client: %w", err)
 	}
 
-	orchestrator, err := engine.NewOrchestrator(cfg.OpenHuntOutputDir, client)
+	orchestrator, err := engine.NewOrchestratorWithConcurrency(cfg.OpenHuntOutputDir, client, cfg.Concurrency)
 	if err != nil {
 		return fmt.Errorf("create orchestrator: %w", err)
 	}

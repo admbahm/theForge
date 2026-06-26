@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -153,6 +154,78 @@ func TestDuplicateEventsDoNotGenerateIntelTwice(t *testing.T) {
 
 	if generator.calls.Load() != 1 {
 		t.Fatalf("generator calls = %d, want 1", generator.calls.Load())
+	}
+}
+
+func TestConcurrentJobProcessing(t *testing.T) {
+	vault := t.TempDir()
+
+	// Create multiple job posts
+	jobCount := 5
+	paths := make([]string, jobCount)
+	for i := range jobCount {
+		paths[i] = filepath.Join(vault, fmt.Sprintf("job_%d.md", i))
+		input := fmt.Sprintf(`---
+company: Company%d
+title: Role%d
+state: favorite
+---
+`, i, i)
+		if err := os.WriteFile(paths[i], []byte(input), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	startedChan := make(chan struct{}, jobCount)
+	releaseChan := make(chan struct{})
+	generator := &fakeIntelGenerator{
+		intel:   "### Role Summary\nProcessed.",
+		started: startedChan,
+		release: releaseChan,
+	}
+
+	// Use 3 workers
+	orchestrator, err := NewOrchestratorWithConcurrency(vault, generator, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer orchestrator.Stop()
+
+	if err := orchestrator.Start(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait until at least 3 tasks have concurrently started processing (our worker limit limit)
+	startedCount := 0
+	deadline := time.Now().Add(2 * time.Second)
+	for startedCount < 3 && time.Now().Before(deadline) {
+		select {
+		case <-startedChan:
+			startedCount++
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+
+	if startedCount < 3 {
+		t.Fatalf("Expected at least 3 concurrent workers to start processing, but got %d", startedCount)
+	}
+
+	// Now release them all
+	close(releaseChan)
+
+	// Wait for all to finish
+	waitFor(t, func() bool {
+		for _, path := range paths {
+			data, err := os.ReadFile(path)
+			if err != nil || !strings.Contains(string(data), "state: intel-ready") {
+				return false
+			}
+		}
+		return true
+	})
+
+	if generator.calls.Load() != int32(jobCount) {
+		t.Fatalf("generator calls = %d, want %d", generator.calls.Load(), jobCount)
 	}
 }
 

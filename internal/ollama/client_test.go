@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/admbahm/theForge/pkg/models"
 )
@@ -99,6 +100,85 @@ func TestGenerateIntelReturnsAPIError(t *testing.T) {
 	_, err = client.GenerateIntel(context.Background(), models.JobPost{})
 	if err == nil || !strings.Contains(err.Error(), "model not found") {
 		t.Fatalf("GenerateIntel() error = %v, want model error", err)
+	}
+}
+
+func TestCircuitBreakerTripsAndRecovers(t *testing.T) {
+	client, err := NewClient("http://ollama.test", DefaultModel)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Make the cooldown very short for testing
+	client.cooldownOverride = 10 * time.Millisecond
+
+	// 1. Simulate 3 sequential failures to trip the circuit breaker
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(_ *http.Request) (*http.Response, error) {
+		return jsonResponse(http.StatusInternalServerError, `{"error":"internal error"}`), nil
+	})}
+
+	for i := 0; i < 3; i++ {
+		_, err = client.GenerateIntel(context.Background(), models.JobPost{})
+		if err == nil || !strings.Contains(err.Error(), "internal error") {
+			t.Fatalf("[%d] expected internal error, got: %v", i, err)
+		}
+	}
+
+	// 2. Next request should fail immediately via the circuit breaker (no HTTP requests made)
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(_ *http.Request) (*http.Response, error) {
+		t.Fatal("no requests should be made when circuit breaker is open")
+		return nil, nil
+	})}
+
+	_, err = client.GenerateIntel(context.Background(), models.JobPost{})
+	if err == nil || !strings.Contains(err.Error(), "circuit breaker open") {
+		t.Fatalf("expected circuit breaker open error, got: %v", err)
+	}
+
+	// 3. Sleep past cooldown to transition into half-open state
+	time.Sleep(15 * time.Millisecond)
+
+	// 4. Have the probe request succeed. This should recover the circuit breaker to closed.
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(_ *http.Request) (*http.Response, error) {
+		return jsonResponse(http.StatusOK, `{"response":"### Role Summary\nRecovered."}`), nil
+	})}
+
+	intel, err := client.GenerateIntel(context.Background(), models.JobPost{})
+	if err != nil {
+		t.Fatalf("expected successful recovery call, got error: %v", err)
+	}
+	if intel != "### Role Summary\nRecovered." {
+		t.Fatalf("unexpected response: %q", intel)
+	}
+
+	// 5. Subsequent request should succeed normally
+	intel, err = client.GenerateIntel(context.Background(), models.JobPost{})
+	if err != nil {
+		t.Fatalf("expected subsequent call to succeed, got error: %v", err)
+	}
+	if intel != "### Role Summary\nRecovered." {
+		t.Fatalf("unexpected response: %q", intel)
+	}
+}
+
+func TestGenerateIntelTimeout(t *testing.T) {
+	client, err := NewClient("http://ollama.test", DefaultModel)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Trigger timeout via context cancellation or HTTP hang
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		// Verify context has a timeout deadline set
+		if _, ok := req.Context().Deadline(); !ok {
+			t.Fatal("expected request context to have a deadline")
+		}
+		return nil, context.DeadlineExceeded
+	})}
+
+	_, err = client.GenerateIntel(context.Background(), models.JobPost{})
+	if err == nil || !strings.Contains(err.Error(), "context deadline exceeded") {
+		t.Fatalf("expected context deadline exceeded error, got: %v", err)
 	}
 }
 

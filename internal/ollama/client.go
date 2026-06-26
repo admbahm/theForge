@@ -4,23 +4,48 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/admbahm/theForge/pkg/models"
 )
 
-const DefaultModel = "gemma4:e4b"
+const (
+	DefaultModel = "gemma4:e4b"
+
+	// Circuit Breaker settings
+	maxFailures      = 3
+	cooldownDuration = 30 * time.Second
+)
+
+type breakerState int
+
+const (
+	stateClosed breakerState = iota
+	stateOpen
+	stateHalfOpen
+)
 
 // Client generates job intelligence through the Ollama HTTP API.
 type Client struct {
 	baseURL    *url.URL
 	model      string
 	httpClient *http.Client
+
+	// Circuit Breaker state
+	mu              sync.Mutex
+	state           breakerState
+	failures        int
+	lastStateChange time.Time
+
+	// Cooldown override for tests
+	cooldownOverride time.Duration
 }
 
 // NewClient creates an Ollama client.
@@ -45,6 +70,9 @@ func NewClient(baseURL, model string) (*Client, error) {
 		httpClient: &http.Client{
 			Timeout: 5 * time.Minute,
 		},
+		state:           stateClosed,
+		failures:        0,
+		lastStateChange: time.Now(),
 	}, nil
 }
 
@@ -62,6 +90,10 @@ type generateResponse struct {
 
 // GenerateIntel asks Ollama for concise, evidence-aware Markdown intelligence about a job.
 func (c *Client) GenerateIntel(ctx context.Context, job models.JobPost) (string, error) {
+	if err := c.checkBreaker(); err != nil {
+		return "", err
+	}
+
 	requestBody := generateRequest{
 		Model:  c.model,
 		Prompt: buildPrompt(job),
@@ -76,8 +108,12 @@ func (c *Client) GenerateIntel(ctx context.Context, job models.JobPost) (string,
 		return "", fmt.Errorf("encode Ollama request: %w", err)
 	}
 
+	// Enforce a strict 60-second limit for the individual HTTP request context
+	callCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	endpoint := c.baseURL.JoinPath("api", "generate")
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), bytes.NewReader(encodedBody))
+	request, err := http.NewRequestWithContext(callCtx, http.MethodPost, endpoint.String(), bytes.NewReader(encodedBody))
 	if err != nil {
 		return "", fmt.Errorf("create Ollama request: %w", err)
 	}
@@ -85,28 +121,35 @@ func (c *Client) GenerateIntel(ctx context.Context, job models.JobPost) (string,
 
 	response, err := c.httpClient.Do(request)
 	if err != nil {
+		c.recordFailure()
 		return "", fmt.Errorf("call Ollama: %w", err)
 	}
 	defer response.Body.Close()
 
 	body, err := io.ReadAll(io.LimitReader(response.Body, 4<<20))
 	if err != nil {
+		c.recordFailure()
 		return "", fmt.Errorf("read Ollama response: %w", err)
 	}
 
 	var result generateResponse
 	if err := json.Unmarshal(body, &result); err != nil {
+		c.recordFailure()
 		return "", fmt.Errorf("decode Ollama response: %w", err)
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		c.recordFailure()
 		if result.Error != "" {
 			return "", fmt.Errorf("Ollama returned %s: %s", response.Status, result.Error)
 		}
 		return "", fmt.Errorf("Ollama returned %s", response.Status)
 	}
 	if result.Error != "" {
+		c.recordFailure()
 		return "", fmt.Errorf("Ollama generation failed: %s", result.Error)
 	}
+
+	c.recordSuccess()
 
 	intel := strings.TrimSpace(result.Response)
 	if intel == "" {
@@ -116,6 +159,48 @@ func (c *Client) GenerateIntel(ctx context.Context, job models.JobPost) (string,
 	intel = strings.TrimPrefix(intel, "```")
 	intel = strings.TrimSuffix(intel, "```")
 	return strings.TrimSpace(intel), nil
+}
+
+func (c *Client) checkBreaker() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	cooldown := cooldownDuration
+	if c.cooldownOverride > 0 {
+		cooldown = c.cooldownOverride
+	}
+
+	if c.state == stateOpen {
+		if time.Since(c.lastStateChange) > cooldown {
+			c.state = stateHalfOpen
+			c.lastStateChange = time.Now()
+			return nil
+		}
+		return errors.New("circuit breaker open: ollama server is currently unavailable")
+	}
+	return nil
+}
+
+func (c *Client) recordSuccess() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.failures = 0
+	if c.state != stateClosed {
+		c.state = stateClosed
+		c.lastStateChange = time.Now()
+	}
+}
+
+func (c *Client) recordFailure() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.failures++
+	if c.state == stateHalfOpen || c.failures >= maxFailures {
+		c.state = stateOpen
+		c.lastStateChange = time.Now()
+	}
 }
 
 func buildPrompt(job models.JobPost) string {
