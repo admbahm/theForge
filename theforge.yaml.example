@@ -1,0 +1,14 @@
+llm:
+  provider: ollama
+  model: gemma4:e4b
+
+providers:
+  ollama:
+    host: http://localhost:11434
+    model: gemma4:e4b
+  openai:
+    api_key_env: OPENAI_API_KEY
+    model: gpt-4.1-mini
+  gemini:
+    api_key_env: GEMINI_API_KEY
+    model: gemini-2.5-flash
