@@ -56,3 +56,32 @@ func TestNewClientRejectsUnknownProvider(t *testing.T) {
 		t.Fatalf("NewClient() error = %v, want unsupported provider error", err)
 	}
 }
+
+type fakeInnerClient struct {
+	lastJob models.JobPost
+}
+
+func (f *fakeInnerClient) GenerateIntel(_ context.Context, job models.JobPost) (string, error) {
+	f.lastJob = job
+	return "done", nil
+}
+
+func TestClientWrapperTruncatesContext(t *testing.T) {
+	inner := &fakeInnerClient{}
+	wrapper := &clientWrapper{
+		Client:           inner,
+		maxContextLength: 30,
+	}
+
+	content := "This is a very long job description that will be truncated."
+	_, err := wrapper.GenerateIntel(context.Background(), models.JobPost{
+		Content: content,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(inner.lastJob.Content) > 30 {
+		t.Fatalf("expected job description to be truncated, got length %d: %q", len(inner.lastJob.Content), inner.lastJob.Content)
+	}
+}

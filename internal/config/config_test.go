@@ -61,6 +61,7 @@ func TestLoadReadsProviderYAMLAndPreservesDefaults(t *testing.T) {
 	yamlPath := filepath.Join(t.TempDir(), "theforge.yaml")
 	content := `openhunt_output_dir: ` + outputDir + `
 concurrency: 8
+max_context_length: 5000
 llm:
   provider: gemini
   model: custom-gemini
@@ -79,6 +80,9 @@ providers:
 	}
 	if cfg.Concurrency != 8 {
 		t.Fatalf("Concurrency = %d, want 8", cfg.Concurrency)
+	}
+	if cfg.MaxContextLength != 5000 {
+		t.Fatalf("MaxContextLength = %d, want 5000", cfg.MaxContextLength)
 	}
 	if cfg.LLM.Provider != "gemini" || cfg.LLM.Model != "custom-gemini" {
 		t.Fatalf("LLM = %+v", cfg.LLM)
@@ -102,6 +106,7 @@ func TestLoadEnvironmentOverridesProviderYAML(t *testing.T) {
 	t.Setenv(llmProviderKey, "openai")
 	t.Setenv(llmModelKey, "environment-model")
 	t.Setenv("THEFORGE_CONCURRENCY", "12")
+	t.Setenv("THEFORGE_MAX_CONTEXT_LENGTH", "15000")
 
 	cfg, err := Load(filepath.Join(t.TempDir(), ".env"), yamlPath)
 	if err != nil {
@@ -109,6 +114,9 @@ func TestLoadEnvironmentOverridesProviderYAML(t *testing.T) {
 	}
 	if cfg.Concurrency != 12 {
 		t.Fatalf("Concurrency = %d, want 12", cfg.Concurrency)
+	}
+	if cfg.MaxContextLength != 15000 {
+		t.Fatalf("MaxContextLength = %d, want 15000", cfg.MaxContextLength)
 	}
 	if cfg.LLM.Provider != "openai" || cfg.LLM.Model != "environment-model" {
 		t.Fatalf("LLM = %+v", cfg.LLM)

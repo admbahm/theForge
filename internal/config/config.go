@@ -23,22 +23,25 @@ const (
 	geminiAPIKeyEnvKey   = "GEMINI_API_KEY_ENV"
 	geminiModelKey       = "GEMINI_MODEL"
 
-	DefaultLLMProvider  = "ollama"
-	DefaultOllamaAPIURL = "http://localhost:11434"
-	DefaultOllamaModel  = "gemma4:e4b"
-	DefaultOpenAIKeyEnv = "OPENAI_API_KEY"
-	DefaultOpenAIModel  = "gpt-4.1-mini"
-	DefaultGeminiKeyEnv = "GEMINI_API_KEY"
-	DefaultGeminiModel  = "gemini-2.5-flash"
-	DefaultConcurrency  = 4
+	DefaultLLMProvider      = "ollama"
+	DefaultOllamaAPIURL     = "http://localhost:11434"
+	DefaultOllamaModel      = "gemma4:e4b"
+	DefaultOpenAIKeyEnv     = "OPENAI_API_KEY"
+	DefaultOpenAIModel      = "gpt-4.1-mini"
+	DefaultGeminiKeyEnv     = "GEMINI_API_KEY"
+	DefaultGeminiModel      = "gemini-2.5-flash"
+	DefaultConcurrency      = 4
+	DefaultMaxContextLength = 24000
 
-	concurrencyKey = "THEFORGE_CONCURRENCY"
+	concurrencyKey      = "THEFORGE_CONCURRENCY"
+	maxContextLengthKey = "THEFORGE_MAX_CONTEXT_LENGTH"
 )
 
 // Config contains the runtime configuration for The Forge.
 type Config struct {
 	OpenHuntOutputDir string          `yaml:"openhunt_output_dir"`
 	Concurrency       int             `yaml:"concurrency"`
+	MaxContextLength  int             `yaml:"max_context_length"`
 	LLM               LLMConfig       `yaml:"llm"`
 	Providers         ProvidersConfig `yaml:"providers"`
 
@@ -109,8 +112,9 @@ func Load(dotenvPath string, yamlPaths ...string) (Config, error) {
 
 func defaultConfig() Config {
 	return Config{
-		Concurrency: DefaultConcurrency,
-		LLM:         LLMConfig{Provider: DefaultLLMProvider},
+		Concurrency:      DefaultConcurrency,
+		MaxContextLength: DefaultMaxContextLength,
+		LLM:              LLMConfig{Provider: DefaultLLMProvider},
 		Providers: ProvidersConfig{
 			Ollama: OllamaConfig{Host: DefaultOllamaAPIURL, Model: DefaultOllamaModel},
 			OpenAI: APIConfig{APIKeyEnv: DefaultOpenAIKeyEnv, Model: DefaultOpenAIModel},
@@ -135,6 +139,11 @@ func applyEnvironment(cfg *Config) {
 	if value, exists := os.LookupEnv(concurrencyKey); exists && strings.TrimSpace(value) != "" {
 		if val, err := strconv.Atoi(strings.TrimSpace(value)); err == nil && val > 0 {
 			cfg.Concurrency = val
+		}
+	}
+	if value, exists := os.LookupEnv(maxContextLengthKey); exists && strings.TrimSpace(value) != "" {
+		if val, err := strconv.Atoi(strings.TrimSpace(value)); err == nil && val > 0 {
+			cfg.MaxContextLength = val
 		}
 	}
 	setFromEnvironment(&cfg.LLM.Provider, llmProviderKey)
