@@ -15,13 +15,13 @@ This roadmap outlines the evolution of **The Forge** from a local-first watcher 
 ## Phase 2: Compute Optimization & Advanced Local Engine (Medium Term)
 *   [x] **VRAM Budgeting & Model Management**: Build interfaces to query Ollama model availability and handle memory swapping gracefully.
 *   [x] **Context Truncation**: Automatically summarize very long job descriptions to fit the target model's context window bounds without discarding key requirements.
-*   [ ] **Concurrent Batching Pipeline**: Implement worker pools in Go to concurrently process multiple vetted jobs when first starting or executing bulk moves.
-*   [ ] **Local Timeout & Circuit Breaker**: Enhance external HTTP call resilience with circuit breakers to prevent stalling execution threads if the local LLM server is busy.
-*   [ ] **Automated Multi-Tier Funnel Orchestration**: Automate the transition between local baseline extraction (Tier 2) and premium model synthesis (Tier 3).
+*   [x] **Concurrent Batching Pipeline**: Implement worker pools in Go to concurrently process multiple vetted jobs when first starting or executing bulk moves.
+*   [x] **Local Timeout & Circuit Breaker**: Enhance external HTTP call resilience with circuit breakers to prevent stalling execution threads if the local LLM server is busy.
+*   [x] **Automated Multi-Tier Funnel Orchestration**: Automate the transition between local baseline extraction (Tier 2) and premium model synthesis (Tier 3).
     *   [x] **CLI Interface**: Support running the pipeline with targeted model profiles using flags (e.g., `theforge run --tier [local|frontier|auto]`).
-    *   [ ] **Availability Fallback**: Programmatically test the local Ollama socket before running. If unavailable, degrade gracefully to cached summaries or report connection issues before failing.
-    *   [ ] **Token Compression**: Pre-process local markdown files to compress redundant text structures prior to outbound frontier API hit-testing.
-    *   [ ] **State Automation**: Parse frontmatter fields (`state` values: `new`, `processed`, `favorite`, `intel-ready`) or custom Obsidian tags to navigate jobs between funnel stages.
+    *   [x] **Availability Fallback**: Programmatically test the local Ollama socket before running. If unavailable, degrade gracefully to cached summaries or report connection issues before failing.
+    *   [x] **Token Compression**: Pre-process local markdown files to compress redundant text structures prior to outbound frontier API hit-testing.
+    *   [x] **State Automation**: Parse frontmatter fields (`state` values: `new`, `processed`, `favorite`, `intel-ready`) or custom Obsidian tags to navigate jobs between funnel stages.
 
 ---
 

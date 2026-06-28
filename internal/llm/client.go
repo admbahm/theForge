@@ -24,6 +24,7 @@ type Client interface {
 type ModelManager interface {
 	VerifyModelAvailability(ctx context.Context, model string) (bool, error)
 	OptimizeVRAM(ctx context.Context, targetModel string) error
+	Ping(ctx context.Context) error
 }
 
 type clientWrapper struct {
@@ -47,6 +48,13 @@ func (w *clientWrapper) VerifyModelAvailability(ctx context.Context, model strin
 func (w *clientWrapper) OptimizeVRAM(ctx context.Context, targetModel string) error {
 	if mm, ok := w.Client.(ModelManager); ok {
 		return mm.OptimizeVRAM(ctx, targetModel)
+	}
+	return nil
+}
+
+func (w *clientWrapper) Ping(ctx context.Context) error {
+	if mm, ok := w.Client.(ModelManager); ok {
+		return mm.Ping(ctx)
 	}
 	return nil
 }
@@ -99,6 +107,13 @@ func (r *routingClient) OptimizeVRAM(ctx context.Context, targetModel string) er
 		if err := mm.OptimizeVRAM(ctx, targetModel); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func (r *routingClient) Ping(ctx context.Context) error {
+	if mm, ok := r.localClient.(ModelManager); ok {
+		return mm.Ping(ctx)
 	}
 	return nil
 }

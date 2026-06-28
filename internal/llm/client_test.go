@@ -137,6 +137,7 @@ type fakeManagerClient struct {
 	Client
 	lastAvailableCalled string
 	lastOptimizeCalled  string
+	pingCalled          bool
 }
 
 func (f *fakeManagerClient) VerifyModelAvailability(ctx context.Context, model string) (bool, error) {
@@ -146,6 +147,11 @@ func (f *fakeManagerClient) VerifyModelAvailability(ctx context.Context, model s
 
 func (f *fakeManagerClient) OptimizeVRAM(ctx context.Context, targetModel string) error {
 	f.lastOptimizeCalled = targetModel
+	return nil
+}
+
+func (f *fakeManagerClient) Ping(ctx context.Context) error {
+	f.pingCalled = true
 	return nil
 }
 
@@ -173,6 +179,14 @@ func TestModelManagerDelegation(t *testing.T) {
 		t.Fatalf("expected wrapper to delegate optimize, got %q", inner.lastOptimizeCalled)
 	}
 
+	err = wrapper.Ping(context.Background())
+	if err != nil {
+		t.Fatalf("wrapper ping failed: %v", err)
+	}
+	if !inner.pingCalled {
+		t.Fatal("expected wrapper to delegate ping call")
+	}
+
 	// 2. Test routingClient delegation
 	local := &fakeManagerClient{}
 	frontier := &fakeManagerClient{}
@@ -195,5 +209,13 @@ func TestModelManagerDelegation(t *testing.T) {
 	}
 	if local.lastOptimizeCalled != "route-opt" || frontier.lastOptimizeCalled != "route-opt" {
 		t.Fatalf("expected routingClient to delegate optimize to both clients")
+	}
+
+	err = rc.Ping(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !local.pingCalled {
+		t.Fatal("expected routingClient to delegate ping call to local client")
 	}
 }

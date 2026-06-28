@@ -411,3 +411,26 @@ func (c *Client) UnloadModel(ctx context.Context, modelName string) error {
 	}
 	return nil
 }
+
+// Ping checks socket connectivity to the Ollama HTTP API.
+func (c *Client) Ping(ctx context.Context) error {
+	endpoint := c.baseURL.JoinPath("api", "tags")
+	pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(pingCtx, http.MethodGet, endpoint.String(), nil)
+	if err != nil {
+		return fmt.Errorf("create ping request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("connection failed: %w", err)
+	}
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("Ollama returned status %d", resp.StatusCode)
+	}
+	return nil
+}
