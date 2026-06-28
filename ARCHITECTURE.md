@@ -119,3 +119,31 @@ graph TD
 *   **API Cost Control**: By restricting Tier 3 calls to explicitly favorited applications, the system avoids paying API generation costs on the 90% of raw jobs that are discarded.
 *   **Hardware and Thermal Safety**: Local compute cycles for batch inference (Tier 2) are lightweight (Gemma 4 / Ollama), preventing sustained VRAM/CPU thermal stress on the user's local hardware rig.
 
+---
+
+## 5. Candidate Evidence & Application Pipeline (Phase 3+)
+
+The Forge transitions job intelligence into actionable application materials through a decoupled, evidence-first generation pipeline:
+
+```mermaid
+graph TD
+    A[OpenHunt Scraped Post] --> B[Job Posting Markdown]
+    B --> C[The Forge Intelligence Extraction]
+    C --> D[Candidate Evidence Mapping Layer]
+    D --> E[Tailored Application Artifacts]
+    E --> F[Downstream Canvas & Analytics]
+```
+
+### Architectural Principles:
+1. **Decoupled Responsibilities**:
+   - **Intelligence Generation** (Tier 2 & 3) is independent from **Artifact Generation** (Resumes, Cover Letters, Outreach, Prep packages).
+   - **Artifact Generation** is independent from **Downstream Analytics** (Canvas views, Dataview querying, trend analysis).
+   - Downstream dashboards and canvas visualizers consume the outputs of earlier phases.
+2. **Authoritative Evidence Source-of-Truth**:
+   - Rather than parsing raw job descriptions directly, downstream tailors and generator components consume a unified **Candidate Evidence Graph**.
+   - This mapping layer correlates verified credentials, projects, and work history to specific job requirements.
+3. **Strict Traceability & Fact Verification**:
+   - Invention of candidate achievements is strictly forbidden.
+   - Match statuses assign confidence metrics (direct match, transferable, or gap).
+   - Every generated resume bullet or application claim must be traceable back to supporting items in the candidate's verified evidence vault.
+
