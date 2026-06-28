@@ -28,11 +28,12 @@ type ModelManager interface {
 
 type clientWrapper struct {
 	Client
+	localClient      Client
 	maxContextLength int
 }
 
 func (w *clientWrapper) GenerateIntel(ctx context.Context, job models.JobPost) (string, error) {
-	job.Content = TruncateContext(job.Content, w.maxContextLength)
+	job.Content = TruncateContext(ctx, w.localClient, job.Content, w.maxContextLength)
 	return w.Client.GenerateIntel(ctx, job)
 }
 
@@ -152,11 +153,13 @@ func NewClient(cfg config.Config) (Client, error) {
 
 	wrappedLocal := &clientWrapper{
 		Client:           localClient,
+		localClient:      localClient,
 		maxContextLength: maxLen,
 	}
 
 	wrappedFrontier := &clientWrapper{
 		Client:           frontierClient,
+		localClient:      localClient,
 		maxContextLength: maxLen,
 	}
 
