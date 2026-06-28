@@ -214,6 +214,9 @@ func (o *Orchestrator) handleFile(path string) {
 	if err := models.UnmarshalMarkdown(data, &job); err != nil {
 		return
 	}
+	if job.Company == "" {
+		return
+	}
 
 	tier := o.tier
 	if tier == "" {

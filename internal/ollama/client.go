@@ -109,8 +109,8 @@ func (c *Client) GenerateIntel(ctx context.Context, job models.JobPost) (string,
 		return "", fmt.Errorf("encode Ollama request: %w", err)
 	}
 
-	// Enforce a strict 60-second limit for the individual HTTP request context
-	callCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	// Enforce a strict 5-minute limit for the individual HTTP request context
+	callCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 
 	endpoint := c.baseURL.JoinPath("api", "generate")
