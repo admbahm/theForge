@@ -45,7 +45,7 @@ Future changes must adhere strictly to these patterns:
 
 ## 3. Entry Points & Data Flow
 1.  **CLI Entrypoint**: `cmd/theforge/main.go` parses CLI arguments (`run` command and flags: `--tier`, `--vault`, `--concurrency`, `--provider`, `--model`), overrides default `.env` / `theforge.yaml` settings, registers interrupt signals, and starts the `engine.Orchestrator`.
-2.  **Ollama Verification**: On startup, `NewClient` verifies the local model availability using a 2-second timeout request to `/api/tags` and logs warnings if missing.
+2.  **Ollama Verification**: On startup, the pipeline programmatically verifies socket connectivity by calling `Ping` to query `/api/tags` and exits cleanly with diagnostic error details if unreachable. If reachable, `NewClient` subsequently tests local model presence and logs warning recommendations if missing.
 3.  **Orchestration Scan & Listen**:
     *   **Initial Scan**: Walks the vault directory recursively and queues files matching the selected tier filter.
     *   **Live Watch**: Watches for `.md` creations, modifications, and renames recursively.

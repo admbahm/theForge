@@ -325,6 +325,40 @@ func TestOptimizeVRAM(t *testing.T) {
 	}
 }
 
+func TestPing(t *testing.T) {
+	client, err := NewClient("http://ollama.test", DefaultModel)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Success case
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Path != "/api/tags" {
+			t.Fatalf("path = %q, want /api/tags", req.URL.Path)
+		}
+		return jsonResponse(http.StatusOK, `{"models":[]}`), nil
+	})}
+	if err := client.Ping(context.Background()); err != nil {
+		t.Fatalf("expected successful ping, got error: %v", err)
+	}
+
+	// 2. Failure case (server returns non-200)
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return jsonResponse(http.StatusInternalServerError, `{"error":"internal error"}`), nil
+	})}
+	if err := client.Ping(context.Background()); err == nil {
+		t.Fatal("expected ping error on status 500, got nil")
+	}
+
+	// 3. Connection failure case
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return nil, context.DeadlineExceeded
+	})}
+	if err := client.Ping(context.Background()); err == nil {
+		t.Fatal("expected connection error, got nil")
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (function roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {

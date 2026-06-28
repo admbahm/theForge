@@ -65,9 +65,22 @@ func main() {
 }
 
 func run(ctx context.Context, cfg config.Config, tier string) error {
+	if ctx.Err() != nil {
+		return nil
+	}
+
 	client, err := llm.NewClient(cfg)
 	if err != nil {
 		return fmt.Errorf("create LLM client: %w", err)
+	}
+
+	// For local or auto tiers, verify Ollama socket connectivity before starting
+	if tier == "local" || tier == "auto" {
+		if mm, ok := client.(llm.ModelManager); ok {
+			if err := mm.Ping(ctx); err != nil {
+				return fmt.Errorf("local Ollama server is unreachable: %w (please start Ollama or configure a remote provider)", err)
+			}
+		}
 	}
 
 	orchestrator, err := engine.NewOrchestratorWithConcurrency(cfg.OpenHuntOutputDir, client, cfg.Concurrency)
