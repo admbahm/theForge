@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -267,4 +268,146 @@ Posted: %s
 
 Posting:
 %s`, job.Company, job.Title, job.Location, job.PostedAt, job.Content)
+}
+
+// VerifyModelAvailability checks if the model exists in the local pulled tags.
+func (c *Client) VerifyModelAvailability(ctx context.Context, model string) (bool, error) {
+	if model == "" {
+		model = c.model
+	}
+	models, err := c.ListLocalModels(ctx)
+	if err != nil {
+		return false, fmt.Errorf("list local models: %w", err)
+	}
+	for _, m := range models {
+		if strings.EqualFold(m.Name, model) || strings.EqualFold(m.Model, model) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// OptimizeVRAM unloads any conflicting active model currently in VRAM.
+func (c *Client) OptimizeVRAM(ctx context.Context, targetModel string) error {
+	if targetModel == "" {
+		targetModel = c.model
+	}
+	active, err := c.ListActiveModels(ctx)
+	if err != nil {
+		return fmt.Errorf("list active models: %w", err)
+	}
+
+	for _, m := range active {
+		if !strings.EqualFold(m.Name, targetModel) && !strings.EqualFold(m.Model, targetModel) {
+			log.Printf("[VRAM] Conflicting model %q is active in memory. Unloading to free VRAM...", m.Name)
+			if err := c.UnloadModel(ctx, m.Name); err != nil {
+				log.Printf("[Warning] Failed to unload model %q: %v", m.Name, err)
+			}
+		}
+	}
+	return nil
+}
+
+// ModelDetails represents the details of an Ollama model.
+type ModelDetails struct {
+	Format            string   `json:"format"`
+	Family            string   `json:"family"`
+	Families          []string `json:"families"`
+	ParameterSize     string   `json:"parameter_size"`
+	QuantizationLevel string   `json:"quantization_level"`
+}
+
+// ModelInfo represents metadata of an Ollama model.
+type ModelInfo struct {
+	Name      string       `json:"name"`
+	Model     string       `json:"model"`
+	Size      int64        `json:"size"`
+	Digest    string       `json:"digest"`
+	Details   ModelDetails `json:"details"`
+	SizeVRAM  int64        `json:"size_vram,omitempty"`
+	ExpiresAt string       `json:"expires_at,omitempty"`
+}
+
+type tagsResponse struct {
+	Models []ModelInfo `json:"models"`
+}
+
+// ListLocalModels retrieves all pulled/stored models from local disk.
+func (c *Client) ListLocalModels(ctx context.Context) ([]ModelInfo, error) {
+	endpoint := c.baseURL.JoinPath("api", "tags")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("create tags request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("execute tags request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Ollama tags returned status %d", resp.StatusCode)
+	}
+
+	var res tagsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return nil, fmt.Errorf("decode tags response: %w", err)
+	}
+	return res.Models, nil
+}
+
+// ListActiveModels retrieves all models currently active/loaded in RAM/VRAM.
+func (c *Client) ListActiveModels(ctx context.Context) ([]ModelInfo, error) {
+	endpoint := c.baseURL.JoinPath("api", "ps")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("create ps request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("execute ps request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Ollama ps returned status %d", resp.StatusCode)
+	}
+
+	var res tagsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return nil, fmt.Errorf("decode ps response: %w", err)
+	}
+	return res.Models, nil
+}
+
+// UnloadModel unloads a model from memory (RAM/VRAM) immediately.
+func (c *Client) UnloadModel(ctx context.Context, modelName string) error {
+	endpoint := c.baseURL.JoinPath("api", "generate")
+	body := map[string]any{
+		"model":      modelName,
+		"keep_alive": 0,
+	}
+	data, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("marshal unload request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("create unload request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("execute unload request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unload returned status %d", resp.StatusCode)
+	}
+	return nil
 }

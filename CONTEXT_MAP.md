@@ -44,17 +44,22 @@ Future changes must adhere strictly to these patterns:
 ---
 
 ## 3. Entry Points & Data Flow
-1.  **CLI Entrypoint**: `cmd/theforge/main.go` parses config via `internal/config.Load()`, registers interrupt signals, creates the `ollama.Client`, and starts the `engine.Orchestrator`.
-2.  **Orchestration Scan & Listen**:
-    *   **Initial Scan**: Walks `OPENHUNT_OUTPUT_DIR` recursively and triggers `handleFile` for any Markdown file containing `state: favorite` or `favorite: true`.
-    *   **Live Watch**: Spawns a background goroutine monitoring FS events. When a `.md` file is written, created, or renamed, or if a new directory is created, it updates watches and processes files.
-3.  **Process Flow**:
-    `Orchestrator.handleFile(path)` $\rightarrow$ Reads $\rightarrow$ Unmarshals $\rightarrow$ Filter (`state == "favorite"`) $\rightarrow$ Call `IntelGenerator.GenerateIntel()` $\rightarrow$ Update frontmatter to `state: intel-ready` $\rightarrow$ Atomic write.
+1.  **CLI Entrypoint**: `cmd/theforge/main.go` parses CLI arguments (`run` command and flags: `--tier`, `--vault`, `--concurrency`, `--provider`, `--model`), overrides default `.env` / `theforge.yaml` settings, registers interrupt signals, and starts the `engine.Orchestrator`.
+2.  **Ollama Verification**: On startup, `NewClient` verifies the local model availability using a 2-second timeout request to `/api/tags` and logs warnings if missing.
+3.  **Orchestration Scan & Listen**:
+    *   **Initial Scan**: Walks the vault directory recursively and queues files matching the selected tier filter.
+    *   **Live Watch**: Watches for `.md` creations, modifications, and renames recursively.
+4.  **Funnel State Matching**:
+    *   **Local Tier (`local`)**: Filters `new`/`""` -> processes locally via Ollama to extract core signals -> transitions state to `processed`.
+    *   **Frontier Tier (`frontier`)**: Filters `favorite` -> processes via premium API (Gemini/OpenAI) to perform deep synthesis -> transitions state to `intel-ready`.
+    *   **Auto Tier (`auto`)**: Automatically coordinates both local and frontier transitions.
+5.  **Process Flow**:
+    `Orchestrator.handleFile(path)` $\rightarrow$ Reads $\rightarrow$ Unmarshals $\rightarrow$ Filter state and tier $\rightarrow$ Optimize VRAM (unload conflicting models via `/api/ps` and `keep_alive: 0`) $\rightarrow$ Call `IntelGenerator.GenerateIntel()` with context tier value $\rightarrow$ Overwrite existing `The Forge Intelligence` section $\rightarrow$ Atomic write.
 
 ---
 
 ## 4. Edge Cases, Risks & Constraints
-*   **Watcher Noise & Duplicate Events**: Filesystem watchers are noisy. Event handlers must act idempotently (e.g. skipping jobs already marked `intel-ready`).
-*   **Ollama Client Timeout & Failures**: Ollama runs locally and can be slow or unavailable. The client uses a 5-minute timeout and accepts a `context.Context` to handle graceful shutdown.
-*   **Partial Writes & Retries**: Temporary files during atomic write prevent vault corruption, but recursive watch triggers on rename/write must be handled cleanly.
+*   **Watcher Noise & Duplicate Events**: Filesystem watchers are noisy. Event handlers coalesce duplicates and check states idempotently before processing.
+*   **Ollama Client Timeout & Failures**: Ollama runs locally and can be slow/stuck. The client uses a circuit breaker (tripping after 3 failures with a cooldown) and a 60-second request timeout limit.
+*   **VRAM Swapping Latency**: Swapping active models on limited hardware introduces latency. The manager unloads conflicting active models prior to local runs to prevent system thrashing.
 *   **Testing Discipline**: Tests must use temporary folders (`t.TempDir()`). Never point tests at a real Obsidian vault.

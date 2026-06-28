@@ -132,3 +132,68 @@ func TestRoutingClientRoutesCorrectly(t *testing.T) {
 		t.Fatalf("expected 'frontier', got %q", res)
 	}
 }
+
+type fakeManagerClient struct {
+	Client
+	lastAvailableCalled string
+	lastOptimizeCalled  string
+}
+
+func (f *fakeManagerClient) VerifyModelAvailability(ctx context.Context, model string) (bool, error) {
+	f.lastAvailableCalled = model
+	return true, nil
+}
+
+func (f *fakeManagerClient) OptimizeVRAM(ctx context.Context, targetModel string) error {
+	f.lastOptimizeCalled = targetModel
+	return nil
+}
+
+func TestModelManagerDelegation(t *testing.T) {
+	inner := &fakeManagerClient{}
+	wrapper := &clientWrapper{
+		Client:           inner,
+		maxContextLength: 100,
+	}
+
+	// 1. Test wrapper delegation
+	ok, err := wrapper.VerifyModelAvailability(context.Background(), "my-model")
+	if err != nil || !ok {
+		t.Fatalf("wrapper verify failed: ok=%v, err=%v", ok, err)
+	}
+	if inner.lastAvailableCalled != "my-model" {
+		t.Fatalf("expected wrapper to delegate verify, got %q", inner.lastAvailableCalled)
+	}
+
+	err = wrapper.OptimizeVRAM(context.Background(), "opt-model")
+	if err != nil {
+		t.Fatalf("wrapper optimize failed: %v", err)
+	}
+	if inner.lastOptimizeCalled != "opt-model" {
+		t.Fatalf("expected wrapper to delegate optimize, got %q", inner.lastOptimizeCalled)
+	}
+
+	// 2. Test routingClient delegation
+	local := &fakeManagerClient{}
+	frontier := &fakeManagerClient{}
+	rc := &routingClient{
+		localClient:    local,
+		frontierClient: frontier,
+	}
+
+	_, err = rc.VerifyModelAvailability(context.Background(), "route-model")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if local.lastAvailableCalled != "route-model" || frontier.lastAvailableCalled != "route-model" {
+		t.Fatalf("expected routingClient to delegate verify to both clients")
+	}
+
+	err = rc.OptimizeVRAM(context.Background(), "route-opt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if local.lastOptimizeCalled != "route-opt" || frontier.lastOptimizeCalled != "route-opt" {
+		t.Fatalf("expected routingClient to delegate optimize to both clients")
+	}
+}

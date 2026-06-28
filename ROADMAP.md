@@ -13,7 +13,7 @@ This roadmap outlines the evolution of **The Forge** from a local-first watcher 
 ---
 
 ## Phase 2: Compute Optimization & Advanced Local Engine (Medium Term)
-*   [ ] **VRAM Budgeting & Model Management**: Build interfaces to query Ollama model availability and handle memory swapping gracefully.
+*   [x] **VRAM Budgeting & Model Management**: Build interfaces to query Ollama model availability and handle memory swapping gracefully.
 *   [ ] **Context Truncation**: Automatically summarize very long job descriptions to fit the target model's context window bounds without discarding key requirements.
 *   [ ] **Concurrent Batching Pipeline**: Implement worker pools in Go to concurrently process multiple vetted jobs when first starting or executing bulk moves.
 *   [ ] **Local Timeout & Circuit Breaker**: Enhance external HTTP call resilience with circuit breakers to prevent stalling execution threads if the local LLM server is busy.
