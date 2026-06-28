@@ -82,7 +82,7 @@ Build systems.
 		t.Fatal(err)
 	}
 	text := string(updated)
-	for _, expected := range []string{"state: intel-ready", "custom_field: preserved", "## The Forge Intelligence", "Strong match."} {
+	for _, expected := range []string{"state: intel-ready", "custom_field: preserved", "## The Forge Intelligence", "Strong match.", "analysis_confidence:", "Confidence Reasoning"} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("updated note missing %q:\n%s", expected, text)
 		}

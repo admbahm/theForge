@@ -269,7 +269,8 @@ func (o *Orchestrator) handleFile(path string) {
 		return
 	}
 
-	updatedData, err := models.UpdateStateAndAppendIntel(data, targetState, intel)
+	conf := models.ComputeConfidence(job)
+	updatedData, err := models.UpdateStateAndAppendIntel(data, targetState, intel, conf)
 	if err != nil {
 		log.Printf("[Error] [%s] %s - %s: Failed to update note payload: %v", fileName, job.Company, job.Title, err)
 		return

@@ -19,7 +19,7 @@ custom_field: keep-me
 Original body.
 `)
 
-	updated, err := UpdateStateAndAppendIntel(input, "intel-ready", "### Role Summary\nGood fit.")
+	updated, err := UpdateStateAndAppendIntel(input, "intel-ready", "### Role Summary\nGood fit.", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ Original body.
 Old summary.
 `)
 
-	updated, err := UpdateStateAndAppendIntel(input, "intel-ready", "### Role Summary\nNew summary.")
+	updated, err := UpdateStateAndAppendIntel(input, "intel-ready", "### Role Summary\nNew summary.", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,5 +80,48 @@ Old summary.
 	}
 	if !strings.Contains(text, "New summary.") {
 		t.Fatalf("expected new summary to be present in:\n%s", text)
+	}
+}
+
+func TestUpdateStateAndAppendIntelIncludesConfidence(t *testing.T) {
+	input := []byte(`---
+job_id: R123
+company: Stark Industries
+title: Arc Engineer
+state: favorite
+---
+
+Body text.
+`)
+
+	conf := &AnalysisConfidence{
+		Score: 0.85,
+		Level: "High",
+		Explanation: []string{
+			"Full job description available",
+			"Technologies explicitly listed",
+		},
+	}
+
+	updated, err := UpdateStateAndAppendIntel(input, "intel-ready", "### Role Summary\nEnriched.", conf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	text := string(updated)
+	expectedStrings := []string{
+		"analysis_confidence:",
+		"score: 0.85",
+		"level: High",
+		"Full job description available",
+		"Technologies explicitly listed",
+		"🟢 High Confidence (Score: 0.85)",
+		"Confidence Reasoning",
+	}
+
+	for _, expected := range expectedStrings {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("updated note missing expected content %q:\n%s", expected, text)
+		}
 	}
 }
