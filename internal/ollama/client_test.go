@@ -53,7 +53,7 @@ func TestGenerateIntelUsesConfiguredModel(t *testing.T) {
 }
 
 func TestBuildPromptRequiresTransferableFramingForUnsupportedAWS(t *testing.T) {
-	prompt := buildPrompt(models.JobPost{
+	prompt := buildPrompt(context.TODO(), models.JobPost{
 		Company: "Example",
 		Title:   "Platform Engineer",
 		Content: "Must have AWS production experience.",
@@ -71,7 +71,7 @@ func TestBuildPromptRequiresTransferableFramingForUnsupportedAWS(t *testing.T) {
 }
 
 func TestBuildPromptForbidsInventedMetrics(t *testing.T) {
-	prompt := buildPrompt(models.JobPost{
+	prompt := buildPrompt(context.TODO(), models.JobPost{
 		Company: "Example",
 		Title:   "Reliability Engineer",
 		Content: "Improve incident response and uptime.",

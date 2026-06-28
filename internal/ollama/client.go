@@ -96,7 +96,7 @@ func (c *Client) GenerateIntel(ctx context.Context, job models.JobPost) (string,
 
 	requestBody := generateRequest{
 		Model:  c.model,
-		Prompt: buildPrompt(job),
+		Prompt: buildPrompt(ctx, job),
 		Stream: false,
 		Options: map[string]any{
 			"temperature": 0.2,
@@ -203,7 +203,35 @@ func (c *Client) recordFailure() {
 	}
 }
 
-func buildPrompt(job models.JobPost) string {
+func buildPrompt(ctx context.Context, job models.JobPost) string {
+	tier, _ := ctx.Value("tier").(string)
+	if tier == "local" {
+		return buildLocalPrompt(job)
+	}
+	return buildFrontierPrompt(job)
+}
+
+func buildLocalPrompt(job models.JobPost) string {
+	return fmt.Sprintf(`You are producing local baseline career intelligence for an ethical, evidence-based AI-assisted job application workflow.
+
+Extract the core signals from the job posting below. Keep it concise, structured, and focused. Do not invent details.
+
+Return concise Markdown only, without a surrounding code fence. Use these headings:
+### Company Profile
+### Role Summary
+### Key Requirements & Tech Stack
+### Keyword Signals
+
+Company: %s
+Title: %s
+Location: %s
+Posted: %s
+
+Posting:
+%s`, job.Company, job.Title, job.Location, job.PostedAt, job.Content)
+}
+
+func buildFrontierPrompt(job models.JobPost) string {
 	return fmt.Sprintf(`You are producing career intelligence for an ethical, evidence-based AI-assisted job application workflow.
 
 The Forge is not a generic resume generator. Its core rule is strict evidence discipline:

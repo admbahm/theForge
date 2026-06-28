@@ -85,3 +85,50 @@ func TestClientWrapperTruncatesContext(t *testing.T) {
 		t.Fatalf("expected job description to be truncated, got length %d: %q", len(inner.lastJob.Content), inner.lastJob.Content)
 	}
 }
+
+type fakeRoutingClient struct {
+	calledWith string
+}
+
+func (f *fakeRoutingClient) GenerateIntel(ctx context.Context, job models.JobPost) (string, error) {
+	return f.calledWith, nil
+}
+
+func TestRoutingClientRoutesCorrectly(t *testing.T) {
+	local := &fakeRoutingClient{calledWith: "local"}
+	frontier := &fakeRoutingClient{calledWith: "frontier"}
+
+	rc := &routingClient{
+		localClient:    local,
+		frontierClient: frontier,
+	}
+
+	// 1. Without context value, defaults to frontier
+	res, err := rc.GenerateIntel(context.Background(), models.JobPost{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res != "frontier" {
+		t.Fatalf("expected 'frontier', got %q", res)
+	}
+
+	// 2. With local context value
+	localCtx := context.WithValue(context.Background(), "tier", "local")
+	res, err = rc.GenerateIntel(localCtx, models.JobPost{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res != "local" {
+		t.Fatalf("expected 'local', got %q", res)
+	}
+
+	// 3. With frontier context value
+	frontierCtx := context.WithValue(context.Background(), "tier", "frontier")
+	res, err = rc.GenerateIntel(frontierCtx, models.JobPost{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res != "frontier" {
+		t.Fatalf("expected 'frontier', got %q", res)
+	}
+}

@@ -110,7 +110,43 @@ Create `.env` from the committed example and set it to the directory where OpenH
 
 ```sh
 cp .env.example .env
-go run ./cmd/theforge
+```
+
+Start the watching and processing pipeline using the `run` subcommand or by running the CLI directly:
+
+```sh
+go run ./cmd/theforge run
+```
+
+### CLI Command & Flags
+
+The Forge supports several command-line flags to customize execution at startup. These flags override values specified in environment variables or `theforge.yaml`:
+
+*   **`-tier <tier>`**: Configures the multi-tier funnel processing behavior. Allowed values:
+    *   `local`: Processes raw postings (`state: new` or empty with no favorite tag) and extracts core signals using local compute, transitioning them to `state: processed`.
+    *   `frontier`: Processes only favorited postings (`state: favorite` or favorited tag), performing deep intelligence enrichment using premium/frontier models, transitioning them to `state: intel-ready`.
+    *   `auto` *(Default)*: Automatically handles both paths in parallel. It pre-processes new postings (`new` -> `processed`) and enriches favorited ones (`favorite` -> `intel-ready`).
+*   **`-vault <path>`**: Overrides the path to the Obsidian vault / OpenHunt output directory (maps to `OPENHUNT_OUTPUT_DIR`).
+*   **`-concurrency <number>`**: Overrides the number of concurrent workers.
+*   **`-provider <provider>`**: Overrides the LLM provider (e.g., `ollama`, `openai`, `gemini`).
+*   **`-model <model>`**: Overrides the target LLM model.
+
+For example, to run only the local pre-processing tier with a custom vault path and concurrency limit:
+
+```sh
+go run ./cmd/theforge run -tier local -vault "/path/to/your/Obsidian/Vault" -concurrency 8
+```
+
+To run deep intelligence synthesis on favorited listings using a specific provider and model:
+
+```sh
+go run ./cmd/theforge run -tier frontier -provider openai -model gpt-4o
+```
+
+To run the automated multi-tier funnel (processing new listings locally and favorited listings via frontier model) on a specific vault directory:
+
+```sh
+go run ./cmd/theforge run -vault "/path/to/your/Obsidian/Vault" -tier auto
 ```
 
 The default configuration selects local Ollama at `http://localhost:11434` with `gemma4:e4b`; no OpenAI, Gemini, or paid API key is required. The existing `OLLAMA_API_URL` and `OLLAMA_MODEL` variables remain supported.

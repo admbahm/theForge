@@ -15,7 +15,7 @@ func TestRunStopsWhenContextIsCanceled(t *testing.T) {
 		OpenHuntOutputDir: t.TempDir(),
 		OllamaAPIURL:      "http://localhost:11434",
 		OllamaModel:       "gemma4:e4b",
-	})
+	}, "auto")
 	if err != nil {
 		t.Fatalf("run() error = %v", err)
 	}

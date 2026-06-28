@@ -18,7 +18,6 @@ type IntelGenerator interface {
 	GenerateIntel(context.Context, models.JobPost) (string, error)
 }
 
-// Orchestrator monitors the Obsidian vault and processes job posts.
 type Orchestrator struct {
 	vaultPath   string
 	generator   IntelGenerator
@@ -31,6 +30,7 @@ type Orchestrator struct {
 	pendingMu   sync.Mutex
 	pending     map[string]struct{}
 	workers     sync.WaitGroup
+	tier        string
 }
 
 const jobQueueSize = 32
@@ -64,7 +64,18 @@ func NewOrchestratorWithConcurrency(vaultPath string, generator IntelGenerator, 
 		cancel:      cancel,
 		jobs:        make(chan string, jobQueueSize),
 		pending:     make(map[string]struct{}),
+		tier:        "auto",
 	}, nil
+}
+
+// SetTier configures the orchestrator's run tier: local, frontier, or auto.
+func (o *Orchestrator) SetTier(tier string) error {
+	tier = strings.ToLower(strings.TrimSpace(tier))
+	if tier != "local" && tier != "frontier" && tier != "auto" {
+		return fmt.Errorf("invalid tier %q (supported: local, frontier, auto)", tier)
+	}
+	o.tier = tier
+	return nil
 }
 
 // Start begins recursive vault monitoring and performs an initial scan.
@@ -203,19 +214,50 @@ func (o *Orchestrator) handleFile(path string) {
 	if err := models.UnmarshalMarkdown(data, &job); err != nil {
 		return
 	}
-	if job.State != "favorite" && !(job.State == "" && job.Favorite) {
+
+	tier := o.tier
+	if tier == "" {
+		tier = "auto"
+	}
+
+	var targetState string
+	var processingTier string
+
+	switch tier {
+	case "local":
+		if job.State == "new" || (job.State == "" && !job.Favorite) {
+			targetState = "processed"
+			processingTier = "local"
+		}
+	case "frontier":
+		if job.State == "favorite" || (job.State == "" && job.Favorite) {
+			targetState = "intel-ready"
+			processingTier = "frontier"
+		}
+	case "auto":
+		if job.State == "new" || (job.State == "" && !job.Favorite) {
+			targetState = "processed"
+			processingTier = "local"
+		} else if job.State == "favorite" || (job.State == "" && job.Favorite) {
+			targetState = "intel-ready"
+			processingTier = "frontier"
+		}
+	}
+
+	if targetState == "" {
 		return
 	}
 
 	fileName := filepath.Base(path)
-	log.Printf("[Processing] [%s] %s - %s: Generating intelligence...", fileName, job.Company, job.Title)
-	intel, err := o.generator.GenerateIntel(o.ctx, job)
+	log.Printf("[Processing] [%s] %s - %s: Generating %s intelligence...", fileName, job.Company, job.Title, processingTier)
+	runCtx := context.WithValue(o.ctx, "tier", processingTier)
+	intel, err := o.generator.GenerateIntel(runCtx, job)
 	if err != nil {
 		log.Printf("[Error] [%s] %s - %s: Intel generation failed: %v", fileName, job.Company, job.Title, err)
 		return
 	}
 
-	updatedData, err := models.UpdateStateAndAppendIntel(data, "intel-ready", intel)
+	updatedData, err := models.UpdateStateAndAppendIntel(data, targetState, intel)
 	if err != nil {
 		log.Printf("[Error] [%s] %s - %s: Failed to update note payload: %v", fileName, job.Company, job.Title, err)
 		return
@@ -224,7 +266,7 @@ func (o *Orchestrator) handleFile(path string) {
 		log.Printf("[Error] [%s] %s - %s: Failed to save changes: %v", fileName, job.Company, job.Title, err)
 		return
 	}
-	log.Printf("[Success] [%s] %s - %s: Finished intelligence (Status: intel-ready)", fileName, job.Company, job.Title)
+	log.Printf("[Success] [%s] %s - %s: Finished intelligence (Status: %s)", fileName, job.Company, job.Title, targetState)
 }
 
 func atomicWrite(path string, data []byte) error {

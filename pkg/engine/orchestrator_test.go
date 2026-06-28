@@ -107,6 +107,10 @@ func TestInitialScanSkipsUnselectedJob(t *testing.T) {
 	}
 	defer orchestrator.Stop()
 
+	if err := orchestrator.SetTier("frontier"); err != nil {
+		t.Fatal(err)
+	}
+
 	if err := orchestrator.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -114,6 +118,82 @@ func TestInitialScanSkipsUnselectedJob(t *testing.T) {
 	if generator.calls.Load() != 0 {
 		t.Fatalf("generator calls = %d, want 0", generator.calls.Load())
 	}
+}
+
+func TestOrchestratorTiers(t *testing.T) {
+	// 1. Test local tier: new -> processed
+	t.Run("local tier", func(t *testing.T) {
+		vault := t.TempDir()
+		path := filepath.Join(vault, "job.md")
+		input := "---\ncompany: Example\nstate: new\n---\nBody"
+		if err := os.WriteFile(path, []byte(input), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		generator := &fakeIntelGenerator{intel: "Local Intel"}
+		orchestrator, err := NewOrchestrator(vault, generator)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer orchestrator.Stop()
+
+		if err := orchestrator.SetTier("local"); err != nil {
+			t.Fatal(err)
+		}
+		if err := orchestrator.Start(); err != nil {
+			t.Fatal(err)
+		}
+
+		waitFor(t, func() bool {
+			data, err := os.ReadFile(path)
+			return err == nil && strings.Contains(string(data), "state: processed")
+		})
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(data), "Local Intel") {
+			t.Fatalf("expected Local Intel: %s", string(data))
+		}
+	})
+
+	// 2. Test frontier tier: favorite -> intel-ready
+	t.Run("frontier tier", func(t *testing.T) {
+		vault := t.TempDir()
+		path := filepath.Join(vault, "job.md")
+		input := "---\ncompany: Example\nstate: favorite\n---\nBody"
+		if err := os.WriteFile(path, []byte(input), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		generator := &fakeIntelGenerator{intel: "Frontier Intel"}
+		orchestrator, err := NewOrchestrator(vault, generator)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer orchestrator.Stop()
+
+		if err := orchestrator.SetTier("frontier"); err != nil {
+			t.Fatal(err)
+		}
+		if err := orchestrator.Start(); err != nil {
+			t.Fatal(err)
+		}
+
+		waitFor(t, func() bool {
+			data, err := os.ReadFile(path)
+			return err == nil && strings.Contains(string(data), "state: intel-ready")
+		})
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(data), "Frontier Intel") {
+			t.Fatalf("expected Frontier Intel: %s", string(data))
+		}
+	})
 }
 
 func TestDuplicateEventsDoNotGenerateIntelTwice(t *testing.T) {

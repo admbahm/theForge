@@ -49,3 +49,36 @@ func TestUnmarshalMarkdownSupportsCRLF(t *testing.T) {
 		t.Fatalf("job = %#v", job)
 	}
 }
+
+func TestUpdateStateAndAppendIntelOverwritesExisting(t *testing.T) {
+	input := []byte(`---
+job_id: R123
+company: Example
+title: Engineer
+state: processed
+---
+
+Original body.
+
+## The Forge Intelligence
+
+### Company Profile
+Old summary.
+`)
+
+	updated, err := UpdateStateAndAppendIntel(input, "intel-ready", "### Role Summary\nNew summary.")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	text := string(updated)
+	if strings.Count(text, "## The Forge Intelligence") != 1 {
+		t.Fatalf("expected exactly one '## The Forge Intelligence' header, got: %d\nFull content:\n%s", strings.Count(text, "## The Forge Intelligence"), text)
+	}
+	if strings.Contains(text, "Old summary.") {
+		t.Fatalf("expected old summary to be overwritten, but found it in:\n%s", text)
+	}
+	if !strings.Contains(text, "New summary.") {
+		t.Fatalf("expected new summary to be present in:\n%s", text)
+	}
+}
