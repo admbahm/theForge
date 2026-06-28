@@ -7,7 +7,7 @@ These rules apply to all work in this repository.
 - Treat The Forge as a local-first Go application that uses Markdown files with YAML frontmatter as its state store.
 - Keep the Obsidian vault human-readable and usable without The Forge running.
 - Treat The Forge as a career intelligence system for ethical, evidence-based AI-assisted job applications, not as a generic resume generator.
-- Distinguish implemented behavior from planned behavior. Ollama integration and the `favorite` to `intel-ready` intelligence step are implemented; evidence mapping and application artifact generation remain planned.
+- Distinguish implemented behavior from planned behavior. Ollama integration, the multi-tier funnel CLI flags (`local`, `frontier`, `auto` tiers), and the `new` to `processed` / `favorite` to `intel-ready` transitions are implemented; evidence mapping and application artifact generation remain planned.
 - Maintain compatibility with the OpenHunt frontmatter contract documented in `README.md` and `DESIGN.md`.
 
 ## Evidence and Product Rules

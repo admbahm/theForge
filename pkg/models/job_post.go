@@ -97,6 +97,17 @@ func UpdateStateAndAppendIntel(data []byte, state, intel string) ([]byte, error)
 		return nil, fmt.Errorf("failed to marshal frontmatter: %w", err)
 	}
 
+	// Strip existing intelligence section if present
+	intelMarker := []byte("\n## The Forge Intelligence\n")
+	if markerIdx := bytes.Index(body, intelMarker); markerIdx >= 0 {
+		body = body[:markerIdx]
+	} else {
+		intelMarkerAlt := []byte("\n\n## The Forge Intelligence\n")
+		if markerIdxAlt := bytes.Index(body, intelMarkerAlt); markerIdxAlt >= 0 {
+			body = body[:markerIdxAlt]
+		}
+	}
+
 	var result strings.Builder
 	result.WriteString("---\n")
 	result.Write(updatedFrontmatter)

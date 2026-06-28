@@ -28,31 +28,57 @@ func (w *clientWrapper) GenerateIntel(ctx context.Context, job models.JobPost) (
 	return w.Client.GenerateIntel(ctx, job)
 }
 
+type routingClient struct {
+	localClient    Client
+	frontierClient Client
+}
+
+func (r *routingClient) GenerateIntel(ctx context.Context, job models.JobPost) (string, error) {
+	tier := "frontier" // Default
+	if val, ok := ctx.Value("tier").(string); ok {
+		tier = val
+	}
+
+	if tier == "local" {
+		if r.localClient == nil {
+			return "", fmt.Errorf("local tier LLM client is not initialized")
+		}
+		return r.localClient.GenerateIntel(ctx, job)
+	}
+
+	if r.frontierClient == nil {
+		return "", fmt.Errorf("frontier tier LLM client is not initialized")
+	}
+	return r.frontierClient.GenerateIntel(ctx, job)
+}
+
 // NewClient constructs the configured LLM provider client.
 func NewClient(cfg config.Config) (Client, error) {
+	// 1. Always initialize local client (Ollama)
+	localHost := firstConfigured(cfg.Providers.Ollama.Host, cfg.OllamaAPIURL, config.DefaultOllamaAPIURL)
+	localModel := firstConfigured(cfg.Providers.Ollama.Model, cfg.OllamaModel, config.DefaultOllamaModel)
+	localClient, err := ollama.NewClient(localHost, localModel)
+	if err != nil {
+		return nil, fmt.Errorf("create local Ollama client: %w", err)
+	}
+
+	// 2. Initialize frontier client based on configured provider
 	provider := strings.ToLower(strings.TrimSpace(cfg.LLM.Provider))
 	if provider == "" {
 		provider = config.DefaultLLMProvider
 	}
 
-	var client Client
-	var err error
-
+	var frontierClient Client
 	switch provider {
 	case "ollama":
-		host := firstConfigured(cfg.Providers.Ollama.Host, cfg.OllamaAPIURL, config.DefaultOllamaAPIURL)
-		model := firstConfigured(cfg.LLM.Model, cfg.Providers.Ollama.Model, cfg.OllamaModel, config.DefaultOllamaModel)
-		client, err = ollama.NewClient(host, model)
-		if err != nil {
-			return nil, fmt.Errorf("create Ollama client: %w", err)
-		}
+		frontierClient = localClient
 	case "openai":
-		client, err = newStubClient("openai", firstConfigured(cfg.LLM.Model, cfg.Providers.OpenAI.Model, config.DefaultOpenAIModel), firstConfigured(cfg.Providers.OpenAI.APIKeyEnv, config.DefaultOpenAIKeyEnv))
+		frontierClient, err = newStubClient("openai", firstConfigured(cfg.LLM.Model, cfg.Providers.OpenAI.Model, config.DefaultOpenAIModel), firstConfigured(cfg.Providers.OpenAI.APIKeyEnv, config.DefaultOpenAIKeyEnv))
 		if err != nil {
 			return nil, err
 		}
 	case "gemini":
-		client, err = newStubClient("gemini", firstConfigured(cfg.LLM.Model, cfg.Providers.Gemini.Model, config.DefaultGeminiModel), firstConfigured(cfg.Providers.Gemini.APIKeyEnv, config.DefaultGeminiKeyEnv))
+		frontierClient, err = newStubClient("gemini", firstConfigured(cfg.LLM.Model, cfg.Providers.Gemini.Model, config.DefaultGeminiModel), firstConfigured(cfg.Providers.Gemini.APIKeyEnv, config.DefaultGeminiKeyEnv))
 		if err != nil {
 			return nil, err
 		}
@@ -65,9 +91,19 @@ func NewClient(cfg config.Config) (Client, error) {
 		maxLen = config.DefaultMaxContextLength
 	}
 
-	return &clientWrapper{
-		Client:           client,
+	wrappedLocal := &clientWrapper{
+		Client:           localClient,
 		maxContextLength: maxLen,
+	}
+
+	wrappedFrontier := &clientWrapper{
+		Client:           frontierClient,
+		maxContextLength: maxLen,
+	}
+
+	return &routingClient{
+		localClient:    wrappedLocal,
+		frontierClient: wrappedFrontier,
 	}, nil
 }
 
