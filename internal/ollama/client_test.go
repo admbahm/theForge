@@ -3,6 +3,7 @@ package ollama
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -185,6 +186,142 @@ func TestGenerateIntelTimeout(t *testing.T) {
 func TestNewClientRejectsInvalidURL(t *testing.T) {
 	if _, err := NewClient("file:///tmp/ollama", DefaultModel); err == nil {
 		t.Fatal("NewClient() error = nil, want invalid URL error")
+	}
+}
+
+func TestListLocalModels(t *testing.T) {
+	client, err := NewClient("http://ollama.test", DefaultModel)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Path != "/api/tags" {
+			t.Fatalf("path = %q, want /api/tags", req.URL.Path)
+		}
+		return jsonResponse(http.StatusOK, `{"models":[{"name":"gemma4:e4b","model":"gemma4:e4b","size":4500000}]}`), nil
+	})}
+
+	models, err := client.ListLocalModels(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(models) != 1 || models[0].Name != "gemma4:e4b" {
+		t.Fatalf("unexpected models: %+v", models)
+	}
+}
+
+func TestListActiveModels(t *testing.T) {
+	client, err := NewClient("http://ollama.test", DefaultModel)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Path != "/api/ps" {
+			t.Fatalf("path = %q, want /api/ps", req.URL.Path)
+		}
+		return jsonResponse(http.StatusOK, `{"models":[{"name":"gemma4:e4b","model":"gemma4:e4b","size":4500000,"size_vram":4500000}]}`), nil
+	})}
+
+	models, err := client.ListActiveModels(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(models) != 1 || models[0].Name != "gemma4:e4b" || models[0].SizeVRAM != 4500000 {
+		t.Fatalf("unexpected models: %+v", models)
+	}
+}
+
+func TestUnloadModel(t *testing.T) {
+	client, err := NewClient("http://ollama.test", DefaultModel)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Path != "/api/generate" {
+			t.Fatalf("path = %q, want /api/generate", req.URL.Path)
+		}
+		var payload map[string]any
+		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload["model"] != "gemma4:e4b" || fmt.Sprintf("%v", payload["keep_alive"]) != "0" {
+			t.Fatalf("unexpected payload: %+v", payload)
+		}
+		return jsonResponse(http.StatusOK, `{"status":"success"}`), nil
+	})}
+
+	err = client.UnloadModel(context.Background(), "gemma4:e4b")
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestVerifyModelAvailability(t *testing.T) {
+	client, err := NewClient("http://ollama.test", "gemma4:e4b")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return jsonResponse(http.StatusOK, `{"models":[{"name":"gemma4:e4b","model":"gemma4:e4b"}]}`), nil
+	})}
+
+	ok, err := client.VerifyModelAvailability(context.Background(), "gemma4:e4b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("expected model to be available")
+	}
+
+	ok, err = client.VerifyModelAvailability(context.Background(), "llama3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Fatal("expected model to NOT be available")
+	}
+}
+
+func TestOptimizeVRAM(t *testing.T) {
+	client, err := NewClient("http://ollama.test", "gemma4:e4b")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	unloads := make(chan string, 5)
+
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Path == "/api/ps" {
+			return jsonResponse(http.StatusOK, `{"models":[{"name":"gemma4:e4b","model":"gemma4:e4b"},{"name":"llama3","model":"llama3"}]}`), nil
+		}
+		if req.URL.Path == "/api/generate" {
+			var payload map[string]any
+			if err := json.NewDecoder(req.Body).Decode(&payload); err == nil {
+				if fmt.Sprintf("%v", payload["keep_alive"]) == "0" {
+					unloads <- fmt.Sprintf("%v", payload["model"])
+				}
+			}
+			return jsonResponse(http.StatusOK, `{"status":"success"}`), nil
+		}
+		return jsonResponse(http.StatusNotFound, ""), nil
+	})}
+
+	err = client.OptimizeVRAM(context.Background(), "gemma4:e4b")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case unloaded := <-unloads:
+		if unloaded != "llama3" {
+			t.Fatalf("expected llama3 to be unloaded, got %q", unloaded)
+		}
+	default:
+		t.Fatal("expected unload request to be made")
 	}
 }
 

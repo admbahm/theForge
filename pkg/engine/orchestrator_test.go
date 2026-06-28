@@ -14,10 +14,11 @@ import (
 )
 
 type fakeIntelGenerator struct {
-	intel   string
-	calls   atomic.Int32
-	started chan struct{}
-	release chan struct{}
+	intel         string
+	calls         atomic.Int32
+	started       chan struct{}
+	release       chan struct{}
+	optimizeCalls atomic.Int32
 }
 
 func (f *fakeIntelGenerator) GenerateIntel(_ context.Context, _ models.JobPost) (string, error) {
@@ -32,6 +33,11 @@ func (f *fakeIntelGenerator) GenerateIntel(_ context.Context, _ models.JobPost) 
 		<-f.release
 	}
 	return f.intel, nil
+}
+
+func (f *fakeIntelGenerator) OptimizeVRAM(ctx context.Context, targetModel string) error {
+	f.optimizeCalls.Add(1)
+	return nil
 }
 
 func TestInitialScanGeneratesIntelForFavoriteJob(t *testing.T) {
@@ -313,6 +319,38 @@ func (o *Orchestrator) pendingCount() int {
 	o.pendingMu.Lock()
 	defer o.pendingMu.Unlock()
 	return len(o.pending)
+}
+
+func TestOrchestratorOptimizeVRAM(t *testing.T) {
+	vault := t.TempDir()
+	path := filepath.Join(vault, "job.md")
+	input := "---\ncompany: Example\nstate: new\n---\nBody"
+	if err := os.WriteFile(path, []byte(input), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	generator := &fakeIntelGenerator{intel: "Intel"}
+	orchestrator, err := NewOrchestrator(vault, generator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer orchestrator.Stop()
+
+	if err := orchestrator.SetTier("local"); err != nil {
+		t.Fatal(err)
+	}
+	if err := orchestrator.Start(); err != nil {
+		t.Fatal(err)
+	}
+
+	waitFor(t, func() bool {
+		data, err := os.ReadFile(path)
+		return err == nil && strings.Contains(string(data), "state: processed")
+	})
+
+	if generator.optimizeCalls.Load() != 1 {
+		t.Fatalf("expected 1 call to OptimizeVRAM, got %d", generator.optimizeCalls.Load())
+	}
 }
 
 func waitFor(t *testing.T, condition func() bool) {

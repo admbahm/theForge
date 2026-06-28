@@ -251,6 +251,15 @@ func (o *Orchestrator) handleFile(path string) {
 	fileName := filepath.Base(path)
 	log.Printf("[Processing] [%s] %s - %s: Generating %s intelligence...", fileName, job.Company, job.Title, processingTier)
 	runCtx := context.WithValue(o.ctx, "tier", processingTier)
+
+	if optimizer, ok := o.generator.(interface {
+		OptimizeVRAM(ctx context.Context, targetModel string) error
+	}); ok {
+		if err := optimizer.OptimizeVRAM(runCtx, ""); err != nil {
+			log.Printf("[Warning] VRAM optimization failed: %v", err)
+		}
+	}
+
 	intel, err := o.generator.GenerateIntel(runCtx, job)
 	if err != nil {
 		log.Printf("[Error] [%s] %s - %s: Intel generation failed: %v", fileName, job.Company, job.Title, err)
