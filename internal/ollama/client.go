@@ -205,11 +205,40 @@ func (c *Client) recordFailure() {
 }
 
 func buildPrompt(ctx context.Context, job models.JobPost) string {
+	if job.Content == "" {
+		return buildMissingDescriptionPrompt(job)
+	}
 	tier, _ := ctx.Value("tier").(string)
 	if tier == "local" {
 		return buildLocalPrompt(job)
 	}
 	return buildFrontierPrompt(job)
+}
+
+func buildMissingDescriptionPrompt(job models.JobPost) string {
+	return fmt.Sprintf(`You are producing career intelligence for an ethical, evidence-based AI-assisted job application workflow.
+
+CRITICAL: The job description was unavailable. This analysis is based primarily on company/domain inference because the job description was unavailable.
+
+Follow these strict constraints:
+- You must explicitly state: "This analysis is based primarily on company/domain inference because the job description was unavailable."
+- Do not fabricate technologies.
+- Do not fabricate responsibilities.
+- Shift the output toward candidate questions, evidence requests, and uncertainty.
+- Never invent candidate experience.
+
+Return concise Markdown only, without a surrounding code fence. Use these headings:
+### Role Summary
+### Requirement Signals
+### Evidence Needed
+### Transferable Positioning
+### Gaps and Unsupported Claims
+### Candidate Follow-Up Questions
+### Interview Themes
+
+Company: %s
+Title: %s
+Location: %s`, job.Company, job.Title, job.Location)
 }
 
 func buildLocalPrompt(job models.JobPost) string {
@@ -250,7 +279,46 @@ Important examples:
 - If a posting asks for AWS but verified candidate evidence only shows GCP, Kubernetes, or Terraform, do not claim AWS production experience. Frame cloud infrastructure skills as transferable and mark AWS as a gap until verified.
 - If a metric is missing, do not invent percentages, dollar amounts, team sizes, uptime, or incident-reduction numbers.
 
-Return concise Markdown only, without a surrounding code fence. Use these headings:
+Follow these strict constraints for specific output sections:
+1. Under "### Requirement Signals":
+   Every extracted requirement should record its provenance using the following YAML structure format:
+   requirement:
+     text: <requirement text>
+     provenance: <explicit | inferred_company | inferred_industry | inferred_title | missing | user_supplied>
+   
+   Example:
+   requirement:
+     text: Experience with IEC 62304
+     provenance: explicit
+
+2. Under "### Evidence Needed":
+   Distinguish between required because explicitly requested vs. requested because the requirement was inferred. Use the following YAML format:
+   Evidence:
+     Item: <item text>
+     Source: <explicit | inferred_company | inferred_industry | inferred_title | missing | user_supplied>
+   
+   Example:
+   Evidence:
+     Item: "Experience with FDA 21 CFR Part 820"
+     Source: inferred_company
+
+3. Under "### Gaps and Unsupported Claims":
+   Do NOT state gaps as absolute truth unless supported. For example:
+   - Use: ⚠ Job requires IEC 62304. Candidate evidence not available.
+   - Or: ⚠ Requirement inferred from company domain.
+
+4. Under "### Interview Themes":
+   Label interview themes with confidence and reasons. Format them as:
+   Interview Theme: <theme>
+   Confidence: <High | Medium | Low>
+   Reason: <reasoning>
+   
+   Example:
+   Interview Theme: Risk Management
+   Confidence: High
+   Reason: Explicit responsibility in posting.
+
+Return concise Markdown only, without a surrounding code fence. Use these exact headings:
 ### Role Summary
 ### Requirement Signals
 ### Evidence Needed

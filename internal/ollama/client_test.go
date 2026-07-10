@@ -71,6 +71,26 @@ func TestBuildPromptRequiresTransferableFramingForUnsupportedAWS(t *testing.T) {
 	}
 }
 
+func TestBuildPromptHandlesMissingDescription(t *testing.T) {
+	prompt := buildPrompt(context.TODO(), models.JobPost{
+		Company: "Stark Industries",
+		Title:   "Arc Reactor Specialist",
+		Content: "", // missing
+	})
+
+	for _, expected := range []string{
+		"CRITICAL: The job description was unavailable",
+		"This analysis is based primarily on company/domain inference because the job description was unavailable",
+		"Do not fabricate technologies",
+		"Do not fabricate responsibilities",
+		"Shift the output toward candidate questions, evidence requests, and uncertainty",
+	} {
+		if !strings.Contains(prompt, expected) {
+			t.Fatalf("missing description prompt missing %q:\n%s", expected, prompt)
+		}
+	}
+}
+
 func TestBuildPromptForbidsInventedMetrics(t *testing.T) {
 	prompt := buildPrompt(context.TODO(), models.JobPost{
 		Company: "Example",

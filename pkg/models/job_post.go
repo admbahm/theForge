@@ -11,20 +11,21 @@ import (
 // JobPost represents the core data structure for a job opportunity tracking state.
 // It maps to YAML frontmatter in Obsidian Markdown files.
 type JobPost struct {
-	JobID           string   `yaml:"job_id"`
-	Company         string   `yaml:"company"`
-	Title           string   `yaml:"title"`
-	Location        string   `yaml:"location"`
-	PostedAt        string   `yaml:"posted_at"`
-	SalaryMin       int      `yaml:"salary_min"`
-	SalaryMax       int      `yaml:"salary_max"`
-	RoleType        string   `yaml:"role_type"`
-	TechStack       []string `yaml:"tech_stack"`
-	RegulatoryGates []string `yaml:"regulatory_gates"`
-	ScrapedAt       string   `yaml:"scraped_at"`
-	Favorite        bool     `yaml:"favorite"`
-	State           string   `yaml:"state"` // e.g., "new", "favorite", "intel-ready", "apply", "completed"
-	Content         string   `yaml:"-"`     // Markdown content body
+	JobID              string              `yaml:"job_id"`
+	Company            string              `yaml:"company"`
+	Title              string              `yaml:"title"`
+	Location           string              `yaml:"location"`
+	PostedAt           string              `yaml:"posted_at"`
+	SalaryMin          int                 `yaml:"salary_min"`
+	SalaryMax          int                 `yaml:"salary_max"`
+	RoleType           string              `yaml:"role_type"`
+	TechStack          []string            `yaml:"tech_stack"`
+	RegulatoryGates    []string            `yaml:"regulatory_gates"`
+	ScrapedAt          string              `yaml:"scraped_at"`
+	Favorite           bool                `yaml:"favorite"`
+	State              string              `yaml:"state"` // e.g., "new", "favorite", "intel-ready", "apply", "completed"
+	AnalysisConfidence *AnalysisConfidence `yaml:"analysis_confidence,omitempty"`
+	Content            string              `yaml:"-"` // Markdown content body
 }
 
 // MarshalMarkdown encodes the JobPost to a Markdown file with YAML frontmatter.
@@ -60,7 +61,7 @@ func UnmarshalMarkdown(data []byte, j *JobPost) error {
 
 // UpdateStateAndAppendIntel preserves existing frontmatter fields while adding
 // generated intelligence and updating the job state.
-func UpdateStateAndAppendIntel(data []byte, state, intel string) ([]byte, error) {
+func UpdateStateAndAppendIntel(data []byte, state, intel string, confidence *AnalysisConfidence) ([]byte, error) {
 	frontmatter, body, err := splitMarkdown(data)
 	if err != nil {
 		return nil, err
@@ -92,6 +93,34 @@ func UpdateStateAndAppendIntel(data []byte, state, intel string) ([]byte, error)
 		)
 	}
 
+	if confidence != nil {
+		var confNode yaml.Node
+		confData, err := yaml.Marshal(confidence)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal confidence: %w", err)
+		}
+		if err := yaml.Unmarshal(confData, &confNode); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal confidence node: %w", err)
+		}
+		if len(confNode.Content) > 0 {
+			actualConfNode := confNode.Content[0]
+			confUpdated := false
+			for index := 0; index+1 < len(mapping.Content); index += 2 {
+				if mapping.Content[index].Value == "analysis_confidence" {
+					mapping.Content[index+1] = actualConfNode
+					confUpdated = true
+					break
+				}
+			}
+			if !confUpdated {
+				mapping.Content = append(mapping.Content,
+					&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "analysis_confidence"},
+					actualConfNode,
+				)
+			}
+		}
+	}
+
 	updatedFrontmatter, err := yaml.Marshal(&document)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal frontmatter: %w", err)
@@ -114,6 +143,9 @@ func UpdateStateAndAppendIntel(data []byte, state, intel string) ([]byte, error)
 	result.WriteString("---\n")
 	result.Write(bytes.TrimRight(body, "\r\n"))
 	result.WriteString("\n\n## The Forge Intelligence\n\n")
+	if confidence != nil {
+		result.WriteString(confidence.RenderMarkdown())
+	}
 	result.WriteString(strings.TrimSpace(intel))
 	result.WriteByte('\n')
 	return []byte(result.String()), nil
