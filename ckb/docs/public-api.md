@@ -10,7 +10,9 @@ Downstream Forge modules (such as resume, CV, and STAR story generators) must in
 
 *   `github.com/admbahm/theForge/ckb/model`: Domain structures, enums, and diagnostic types.
 *   `github.com/admbahm/theForge/ckb/parser`: Walk directories and parse Markdown documents.
-*   `github.com/admbahm/theForge/ckb/export`: Serialize CKB to JSON format.
+*   `github.com/admbahm/theForge/ckb/planning`: Build plan entrypoints and policies.
+*   `github.com/admbahm/theForge/ckb/rendering`: Compile plans into structured intermediate models.
+*   `github.com/admbahm/theForge/ckb/export`: Exporters for JSON, Markdown, Plain Text, and Provenance Sidecar.
 
 ---
 

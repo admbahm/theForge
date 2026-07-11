@@ -17,6 +17,33 @@ const (
 	TypeEducation      ObjectType = "Education"
 )
 
+// ObjectTypePrefixes defines the canonical mapping between object type and ID prefix.
+var ObjectTypePrefixes = map[ObjectType]string{
+	TypeProfile:        "profile",
+	TypeTimeline:       "timeline",
+	TypeExperience:     "exp",
+	TypeProject:        "proj",
+	TypeSkill:          "skill",
+	TypeAccomplishment: "acc",
+	TypeCredential:     "cred",
+	TypeContribution:   "contrib",
+	TypeReference:      "ref",
+	TypeEvidence:       "ev",
+	TypeEducation:      "edu",
+}
+
+// RequiredPrefixForObjectType returns the required ID prefix for an object type.
+func RequiredPrefixForObjectType(t ObjectType) (string, bool) {
+	prefix, ok := ObjectTypePrefixes[t]
+	return prefix, ok
+}
+
+// IsValidObjectType reports whether t is one of the canonical CKB object types.
+func IsValidObjectType(t ObjectType) bool {
+	_, ok := ObjectTypePrefixes[t]
+	return ok
+}
+
 // Status represents the curation status of a CKB document.
 type Status string
 

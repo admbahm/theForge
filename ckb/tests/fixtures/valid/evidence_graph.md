@@ -18,5 +18,5 @@
 
 | Evidence ID | Evidence Type | Verification Level | Visibility | Storage Location (Fictionalized) | Description |
 | :--- | :--- | :---: | :--- | :--- | :--- |
-| **ev:git-fixture-repo** | Git Repository | Verified | Public | `github.com/user/fixture-repo` | Test fixture code repository. |
-| **ev:eval-fixture-2025** | Performance Review| Verified | Confidential| `local://secure/eval-fixture-2025.pdf` | Fictional performance log. |
+| **ev:git-fixture-repo** | Git Repository | Independently-Verified | Public | `github.com/user/fixture-repo` | Test fixture code repository. |
+| **ev:eval-fixture-2025** | Performance Review| Independently-Verified | Confidential| `local://secure/eval-fixture-2025.pdf` | Fictional performance log. |

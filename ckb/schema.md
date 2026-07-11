@@ -20,6 +20,7 @@ Every Career Knowledge Base record maps to one of the following first-class obje
 | **Contribution** | `contrib` | `contributions.md` | Merged publications, speaking engagements, and papers. | `## 1. Speaking Engagements`, `## 2. Publications & Technical Writing` | Yes | Yes |
 | **Reference** | `ref` | `references.md` | Contact-free relational vouchers vouching for candidate. | `## 1. Professional Vouchers (Contact-Free)` | No | Yes |
 | **Evidence** | `ev` | `evidence.md` | Foundational verification database. | `## 1. Relational Evidence Catalog` | No | Yes |
+| **Education** | `edu` | `education.md` | Academic credentials and education history. | `## 1. Academic Credentials` | Yes | Yes |
 
 ---
 
@@ -29,6 +30,7 @@ To ensure that the CKB graph can be successfully represented in databases (SQLit
 
 *   **Format Pattern**: `^[a-z0-9]+:[a-z0-9-]+$`
 *   **Structure**: `<id-prefix>:<kebab-case-slug>` (e.g. `exp:stark-devops`, `proj:titan-consolidation`, `ev:git-titan-repo`).
+*   **Prefix Mapping**: The ID prefix must match the declared `Type` exactly according to the object type inventory.
 *   **Casing Rules**: All lowercase alphanumeric and hyphens. Spaces, capitals, and symbols (except the single colon separator) are strictly forbidden.
 *   **Uniqueness Scope**: Globally unique across the entire CKB repository. No two nodes may share the same ID.
 *   **Immutability**: IDs are immutable. Renaming an ID requires running a refactoring/migration script to update all files referencing that ID to prevent broken links.

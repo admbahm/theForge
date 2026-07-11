@@ -2,7 +2,6 @@ package validation
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/admbahm/theForge/ckb/model"
 )
@@ -63,37 +62,36 @@ func ValidateGraph(kb *model.KnowledgeBase) []model.Diagnostic {
 				continue
 			}
 
-			// Validate type-prefix compatibility
-			targetPrefix := strings.Split(rel.TargetID, ":")[0]
+			// Validate relationship compatibility against the resolved target object's declared type.
 			switch rel.Type {
 			case model.RelExperience:
-				if targetPrefix != "exp" {
+				if targetNode.Type != model.TypeExperience {
 					diags = append(diags, model.Diagnostic{
 						Code:     model.CodeRelationshipInvalidType,
 						Severity: model.SeverityError,
-						Message:  fmt.Sprintf("Invalid Link target: Related Experience %q must have exp: prefix, got prefix %q", rel.TargetID, targetPrefix),
+						Message:  fmt.Sprintf("Invalid Link target: Related Experience %q must resolve to Type %q, got Type %q", rel.TargetID, model.TypeExperience, targetNode.Type),
 						Source:   rel.Source,
 						ObjectID: obj.ID,
 						Field:    string(rel.Type),
 					})
 				}
 			case model.RelProjects:
-				if targetPrefix != "proj" {
+				if targetNode.Type != model.TypeProject {
 					diags = append(diags, model.Diagnostic{
 						Code:     model.CodeRelationshipInvalidType,
 						Severity: model.SeverityError,
-						Message:  fmt.Sprintf("Invalid Link target: Related Projects %q must have proj: prefix, got prefix %q", rel.TargetID, targetPrefix),
+						Message:  fmt.Sprintf("Invalid Link target: Related Projects %q must resolve to Type %q, got Type %q", rel.TargetID, model.TypeProject, targetNode.Type),
 						Source:   rel.Source,
 						ObjectID: obj.ID,
 						Field:    string(rel.Type),
 					})
 				}
 			case model.RelEvidence:
-				if targetPrefix != "ev" {
+				if targetNode.Type != model.TypeEvidence {
 					diags = append(diags, model.Diagnostic{
 						Code:     model.CodeRelationshipInvalidType,
 						Severity: model.SeverityError,
-						Message:  fmt.Sprintf("Invalid Link target: Related Evidence %q must have ev: prefix, got prefix %q", rel.TargetID, targetPrefix),
+						Message:  fmt.Sprintf("Invalid Link target: Related Evidence %q must resolve to Type %q, got Type %q", rel.TargetID, model.TypeEvidence, targetNode.Type),
 						Source:   rel.Source,
 						ObjectID: obj.ID,
 						Field:    string(rel.Type),
@@ -118,8 +116,7 @@ func ValidateGraph(kb *model.KnowledgeBase) []model.Diagnostic {
 	// 3. Orphaned evidence check
 	// Every evidence node (prefix "ev:") must be referenced by at least one other node
 	for id, obj := range kb.Objects {
-		prefix := strings.Split(id, ":")[0]
-		if prefix == "ev" && id != "ev:main" && id != "ev:fictional-main" {
+		if obj.Type == model.TypeEvidence && id != "ev:main" && id != "ev:fictional-main" {
 			if !referencedIDs[id] {
 				diags = append(diags, model.Diagnostic{
 					Code:     model.CodeEvidenceOrphaned,

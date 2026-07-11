@@ -17,4 +17,4 @@
 
 | Evidence ID | Evidence Type | Verification Level | Visibility | Storage Location (Fictionalized) | Description |
 | :--- | :--- | :---: | :--- | :--- | :--- |
-| **ev:orphan-fixture** | Git Repository | Verified | Public | `github.com/user/orphan-fixture` | This evidence has no incoming references. |
+| **ev:orphan-fixture** | Git Repository | Independently-Verified | Public | `github.com/user/orphan-fixture` | This evidence has no incoming references. |

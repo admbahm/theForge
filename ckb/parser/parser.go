@@ -22,21 +22,6 @@ import (
 	"github.com/yuin/goldmark/text"
 )
 
-// Allowed Type to Prefix mapping
-var allowedTypes = map[string]string{
-	"Profile":        "profile",
-	"Timeline":       "timeline",
-	"Experience":     "exp",
-	"Project":        "proj",
-	"Skill":          "skill",
-	"Accomplishment": "acc",
-	"Credential":     "cred",
-	"Contribution":   "contrib",
-	"Reference":      "ref",
-	"Evidence":       "ev",
-	"Education":      "edu",
-}
-
 // Canonical required metadata table keys
 var canonicalRequiredKeys = []string{
 	"Schema Version",
@@ -124,10 +109,7 @@ func ParseFiles(ctx context.Context, files []string, options ParseOptions) Resul
 	})
 
 	// 1. Enforce limits: maximum file objects
-	limit := options.Limits
-	if limit.MaxObjectCount == 0 {
-		limit = DefaultLimits()
-	}
+	limit := normalizeLimits(options.Limits)
 
 	if len(sortedFiles) > limit.MaxObjectCount {
 		res.Diagnostics = append(res.Diagnostics, model.Diagnostic{
@@ -176,7 +158,7 @@ func ParseFiles(ctx context.Context, files []string, options ParseOptions) Resul
 				if obj.Type == model.TypeEvidence {
 					source, err := os.ReadFile(file)
 					if err == nil {
-						registerEvidenceCatalogIDs(res.KnowledgeBase, obj, source)
+						res.Diagnostics = append(res.Diagnostics, registerEvidenceCatalogIDs(res.KnowledgeBase, obj, source)...)
 					}
 				}
 			}
@@ -193,8 +175,44 @@ func ParseFiles(ctx context.Context, files []string, options ParseOptions) Resul
 	return res
 }
 
+func normalizeLimits(limits Limits) Limits {
+	defaults := DefaultLimits()
+	if limits.MaxFileSize <= 0 {
+		limits.MaxFileSize = defaults.MaxFileSize
+	}
+	if limits.MaxLineLength <= 0 {
+		limits.MaxLineLength = defaults.MaxLineLength
+	}
+	if limits.MaxMetadataRows <= 0 {
+		limits.MaxMetadataRows = defaults.MaxMetadataRows
+	}
+	if limits.MaxObjectCount <= 0 {
+		limits.MaxObjectCount = defaults.MaxObjectCount
+	}
+	if limits.MaxRelationshipsNode <= 0 {
+		limits.MaxRelationshipsNode = defaults.MaxRelationshipsNode
+	}
+	if limits.MaxSectionCount <= 0 {
+		limits.MaxSectionCount = defaults.MaxSectionCount
+	}
+	if limits.MaxHeadingDepth <= 0 {
+		limits.MaxHeadingDepth = defaults.MaxHeadingDepth
+	}
+	return limits
+}
+
+func hasFatalDiagnostic(diags []model.Diagnostic) bool {
+	for _, diag := range diags {
+		if diag.Severity == model.SeverityFatal {
+			return true
+		}
+	}
+	return false
+}
+
 func parseSingleFile(path string, limits Limits, options ParseOptions) (*model.Object, []model.Diagnostic) {
 	var diags []model.Diagnostic
+	limits = normalizeLimits(limits)
 
 	info, err := os.Stat(path)
 	if err != nil {
@@ -258,6 +276,76 @@ func parseSingleFile(path string, limits Limits, options ParseOptions) (*model.O
 	reader := text.NewReader(data)
 	doc := md.Parser().Parse(reader, gparser.WithContext(gparser.NewContext()))
 
+	var rawHTMLDiag *model.Diagnostic
+	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		if n.Kind() == ast.KindHTMLBlock || n.Kind() == ast.KindRawHTML {
+			var content string
+			var startOffset int
+			var hasOffset bool
+
+			if n.Kind() == ast.KindHTMLBlock {
+				var buf bytes.Buffer
+				lines := n.Lines()
+				for i := 0; i < lines.Len(); i++ {
+					seg := lines.At(i)
+					buf.Write(seg.Value(data))
+				}
+				content = strings.TrimSpace(buf.String())
+				if lines.Len() > 0 {
+					startOffset = lines.At(0).Start
+					hasOffset = true
+				}
+			} else {
+				var buf bytes.Buffer
+				rawNode := n.(*ast.RawHTML)
+				for i := 0; i < rawNode.Segments.Len(); i++ {
+					seg := rawNode.Segments.At(i)
+					buf.Write(seg.Value(data))
+				}
+				content = strings.TrimSpace(buf.String())
+				if rawNode.Segments.Len() > 0 {
+					startOffset = rawNode.Segments.At(0).Start
+					hasOffset = true
+				}
+			}
+
+			// If comment, allow it. If allowed inline HTML, allow it.
+			if n.Kind() == ast.KindHTMLBlock {
+				if strings.HasPrefix(content, "<!--") && strings.HasSuffix(content, "-->") {
+					return ast.WalkContinue, nil
+				}
+			} else if n.Kind() == ast.KindRawHTML {
+				if isAllowedInlineHTML(content) {
+					return ast.WalkContinue, nil
+				}
+			}
+
+			// Reject other raw HTML!
+			lineNum := 1
+			if hasOffset {
+				lineNum = bytes.Count(data[:startOffset], []byte("\n")) + 1
+			}
+
+			rawHTMLDiag = &model.Diagnostic{
+				Code:        model.CodeMarkdownRawHTML,
+				Severity:    model.SeverityFatal,
+				Message:     fmt.Sprintf("Prohibited raw HTML detected: %s", sanitizeHTMLForMessage(content)),
+				Source:      model.SourceLocation{FilePath: path, Line: lineNum},
+				Remediation: "Remove raw block HTML tags from CKB documents. Use markdown instead.",
+			}
+			return ast.WalkStop, nil
+		}
+		return ast.WalkContinue, nil
+	})
+
+	if rawHTMLDiag != nil {
+		diags = append(diags, *rawHTMLDiag)
+		return nil, diags
+	}
+
 	// Parse Metadata Table
 	metaNode, metaErrDiag := extractMetadataTableNode(doc, path)
 	if metaErrDiag != nil {
@@ -268,8 +356,8 @@ func parseSingleFile(path string, limits Limits, options ParseOptions) (*model.O
 	meta, metaDiags := parseMetadataTableFields(metaNode, data, path, limits)
 	diags = append(diags, metaDiags...)
 
-	// Fatal check: if metadata ID or Type was missing/failed, we cannot proceed safely
-	if meta.ID == "" || meta.Type == "" {
+	// Fatal check: if metadata ID, Type, identity, privacy, or local limits failed, we cannot proceed safely.
+	if meta.ID == "" || meta.Type == "" || hasFatalDiagnostic(diags) {
 		return nil, diags
 	}
 
@@ -334,6 +422,47 @@ func parseMetadataTableFields(table *extast.Table, source []byte, path string, l
 		Tags:         make([]string, 0),
 	}
 
+	// 1. Perform raw line unescaped pipe check on the metadata table block
+	rawLines := strings.Split(string(source), "\n")
+	hasFatalPipeError := false
+	for idx, line := range rawLines {
+		trimmed := strings.TrimSpace(line)
+		// Metadata table is contiguous at the top, ending at empty line, horizontal rule or heading
+		if trimmed == "" || strings.HasPrefix(trimmed, "##") || strings.HasPrefix(trimmed, "---") {
+			break
+		}
+		// Skip separator row (idx == 1)
+		if idx == 1 {
+			if countUnescapedPipes(trimmed) != 3 {
+				diags = append(diags, model.Diagnostic{
+					Code:     model.CodeMetadataInvalidColumnCount,
+					Severity: model.SeverityFatal,
+					Message:  fmt.Sprintf("Metadata table separator row must have exactly 2 columns, got: %s", trimmed),
+					Source:   model.SourceLocation{FilePath: path, Line: idx + 1},
+				})
+				hasFatalPipeError = true
+			}
+			continue
+		}
+		// For header (idx == 0) and data rows
+		if countUnescapedPipes(trimmed) != 3 {
+			code := model.CodeMetadataMalformedRow
+			if idx == 0 {
+				code = model.CodeMetadataInvalidColumnCount
+			}
+			diags = append(diags, model.Diagnostic{
+				Code:     code,
+				Severity: model.SeverityFatal,
+				Message:  fmt.Sprintf("Metadata table row must have exactly 2 columns, got: %s", trimmed),
+				Source:   model.SourceLocation{FilePath: path, Line: idx + 1},
+			})
+			hasFatalPipeError = true
+		}
+	}
+	if hasFatalPipeError {
+		return meta, diags
+	}
+
 	// Count rows
 	rowCount := 0
 	for row := table.FirstChild(); row != nil; row = row.NextSibling() {
@@ -353,6 +482,8 @@ func parseMetadataTableFields(table *extast.Table, source []byte, path string, l
 
 	var headerCells []*extast.TableCell
 	var bodyRows []*extast.TableRow
+	typeLine := 1
+	relationshipTargetCount := 0
 
 	for child := table.FirstChild(); child != nil; child = child.NextSibling() {
 		if th, ok := child.(*extast.TableHeader); ok {
@@ -366,11 +497,11 @@ func parseMetadataTableFields(table *extast.Table, source []byte, path string, l
 		}
 	}
 
-	if len(headerCells) < 2 {
+	if len(headerCells) != 2 {
 		diags = append(diags, model.Diagnostic{
-			Code:     model.CodeMetadataMissingField,
+			Code:     model.CodeMetadataInvalidColumnCount,
 			Severity: model.SeverityFatal,
-			Message:  "Metadata table headers are malformed.",
+			Message:  fmt.Sprintf("Metadata table must have exactly 2 columns, got %d", len(headerCells)),
 			Source:   model.SourceLocation{FilePath: path, Line: 1},
 		})
 		return meta, diags
@@ -381,7 +512,7 @@ func parseMetadataTableFields(table *extast.Table, source []byte, path string, l
 
 	if headerKey != "Metadata" || headerVal != "Value" {
 		diags = append(diags, model.Diagnostic{
-			Code:     model.CodeMetadataMissingField,
+			Code:     model.CodeMetadataInvalidHeader,
 			Severity: model.SeverityFatal,
 			Message:  fmt.Sprintf("Invalid table headers: expected '| Metadata | Value |', got '| %s | %s |'", headerKey, headerVal),
 			Source:   model.SourceLocation{FilePath: path, Line: 1},
@@ -403,7 +534,13 @@ func parseMetadataTableFields(table *extast.Table, source []byte, path string, l
 			}
 		}
 
-		if len(rowCells) < 2 {
+		if len(rowCells) != 2 {
+			diags = append(diags, model.Diagnostic{
+				Code:     model.CodeMetadataMalformedRow,
+				Severity: model.SeverityFatal,
+				Message:  fmt.Sprintf("Metadata table row must have exactly 2 columns, got %d", len(rowCells)),
+				Source:   model.SourceLocation{FilePath: path, Line: rowIdx},
+			})
 			continue
 		}
 
@@ -430,7 +567,6 @@ func parseMetadataTableFields(table *extast.Table, source []byte, path string, l
 				break
 			}
 		}
-
 		if !isBold {
 			diags = append(diags, model.Diagnostic{
 				Code:     model.CodeMetadataMissingField,
@@ -483,7 +619,8 @@ func parseMetadataTableFields(table *extast.Table, source []byte, path string, l
 				}
 			case "Type":
 				meta.Type = model.ObjectType(val)
-				if _, ok := allowedTypes[val]; !ok {
+				typeLine = rowIdx
+				if !model.IsValidObjectType(meta.Type) {
 					diags = append(diags, model.Diagnostic{
 						Code:     model.CodeMetadataInvalidObjType,
 						Severity: model.SeverityFatal,
@@ -506,17 +643,11 @@ func parseMetadataTableFields(table *extast.Table, source []byte, path string, l
 					})
 				}
 			case "Verification Level":
-				meta.Verification = model.VerificationLevel(val)
-				switch val {
-				case "Unverified", "Self-Attested", "Artifact-Supported", "Independently-Verified", "Disputed", "Superseded":
-				default:
-					diags = append(diags, model.Diagnostic{
-						Code:     model.CodeMetadataInvalidEnum,
-						Severity: model.SeverityError,
-						Message:  fmt.Sprintf("Invalid Verification Level value %q", val),
-						Source:   model.SourceLocation{FilePath: path, Line: rowIdx},
-						Field:    key,
-					})
+				parsedVerification, diag := parseVerificationValue(val, path, rowIdx, key)
+				if diag != nil {
+					diags = append(diags, *diag)
+				} else {
+					meta.Verification = parsedVerification
 				}
 			case "Confidence":
 				c, err := strconv.ParseFloat(val, 64)
@@ -541,17 +672,10 @@ func parseMetadataTableFields(table *extast.Table, source []byte, path string, l
 					}
 				}
 			case "Visibility":
-				meta.Visibility = model.Visibility(val)
-				switch val {
-				case "Public", "Confidential", "Internal":
-				default:
-					diags = append(diags, model.Diagnostic{
-						Code:     model.CodeMetadataInvalidEnum,
-						Severity: model.SeverityError,
-						Message:  fmt.Sprintf("Invalid Visibility value %q", val),
-						Source:   model.SourceLocation{FilePath: path, Line: rowIdx},
-						Field:    key,
-					})
+				visibility, diag := parseVisibilityValue(val, path, rowIdx, key)
+				meta.Visibility = visibility
+				if diag != nil {
+					diags = append(diags, *diag)
 				}
 			case "Source":
 				meta.Source = val
@@ -609,12 +733,16 @@ func parseMetadataTableFields(table *extast.Table, source []byte, path string, l
 			switch key {
 			case "Related Documents":
 				meta.RelatedDocs = items
+				relationshipTargetCount += len(items)
 			case "Related Experience":
 				meta.RelatedExps = items
+				relationshipTargetCount += len(items)
 			case "Related Projects":
 				meta.RelatedProjs = items
+				relationshipTargetCount += len(items)
 			case "Related Evidence":
 				meta.RelatedEvs = items
+				relationshipTargetCount += len(items)
 			case "Tags":
 				meta.Tags = items
 			}
@@ -630,7 +758,78 @@ func parseMetadataTableFields(table *extast.Table, source []byte, path string, l
 		})
 	}
 
+	if meta.ID != "" && meta.Type != "" {
+		if requiredPrefix, ok := model.RequiredPrefixForObjectType(meta.Type); ok {
+			actualPrefix := strings.SplitN(meta.ID, ":", 2)[0]
+			if actualPrefix != requiredPrefix {
+				diags = append(diags, model.Diagnostic{
+					Code:     model.CodeIdentityPrefixTypeMismatch,
+					Severity: model.SeverityFatal,
+					Message:  fmt.Sprintf("ID prefix %q does not match Type %q; expected prefix %q", actualPrefix, meta.Type, requiredPrefix),
+					Source:   model.SourceLocation{FilePath: path, Line: typeLine},
+					ObjectID: meta.ID,
+					Field:    "Type",
+				})
+			}
+		}
+	}
+
+	if relationshipTargetCount > limits.MaxRelationshipsNode {
+		diags = append(diags, model.Diagnostic{
+			Code:     model.CodeLimitRelationshipsExceeded,
+			Severity: model.SeverityFatal,
+			Message:  fmt.Sprintf("Relationship target count %d exceeds limit of %d for one object", relationshipTargetCount, limits.MaxRelationshipsNode),
+			Source:   model.SourceLocation{FilePath: path, Line: 1},
+			ObjectID: meta.ID,
+			Field:    "Relationships",
+		})
+	}
+
 	return meta, diags
+}
+
+func parseVisibilityValue(val string, path string, line int, field string) (model.Visibility, *model.Diagnostic) {
+	switch val {
+	case string(model.VisibilityPublic):
+		return model.VisibilityPublic, nil
+	case string(model.VisibilityConfidential):
+		return model.VisibilityConfidential, nil
+	case string(model.VisibilityInternal):
+		return model.VisibilityInternal, nil
+	default:
+		return "", &model.Diagnostic{
+			Code:     model.CodeMetadataInvalidEnum,
+			Severity: model.SeverityError,
+			Message:  fmt.Sprintf("Invalid Visibility value %q", val),
+			Source:   model.SourceLocation{FilePath: path, Line: line},
+			Field:    field,
+		}
+	}
+}
+
+func parseVerificationValue(val string, path string, line int, field string) (model.VerificationLevel, *model.Diagnostic) {
+	switch val {
+	case string(model.VerificationUnverified):
+		return model.VerificationUnverified, nil
+	case string(model.VerificationSelfAttested):
+		return model.VerificationSelfAttested, nil
+	case string(model.VerificationArtifactSupported):
+		return model.VerificationArtifactSupported, nil
+	case string(model.VerificationIndependentlyVerified):
+		return model.VerificationIndependentlyVerified, nil
+	case string(model.VerificationDisputed):
+		return model.VerificationDisputed, nil
+	case string(model.VerificationSuperseded):
+		return model.VerificationSuperseded, nil
+	default:
+		return "", &model.Diagnostic{
+			Code:     model.CodeMetadataInvalidEnum,
+			Severity: model.SeverityError,
+			Message:  fmt.Sprintf("Invalid Verification Level value %q", val),
+			Source:   model.SourceLocation{FilePath: path, Line: line},
+			Field:    field,
+		}
+	}
 }
 
 func parseDateQuiet(val string) time.Time {
@@ -698,12 +897,8 @@ func parseMarkdownBodySections(doc ast.Node, source []byte, path string, limits 
 		} else {
 			// Write the raw bytes of body block to section buffer
 			if currentSection != nil {
-				// extract segments of text from source
-				lines := child.Lines()
-				for j := 0; j < lines.Len(); j++ {
-					seg := lines.At(j)
-					sectionBytes.Write(seg.Value(source))
-				}
+				// extract segments of text from source recursively to handle lists
+				sectionBytes.Write(extractTextRecursive(child, source))
 				sectionBytes.WriteByte('\n')
 			}
 		}
@@ -829,30 +1024,297 @@ func sortStable(d model.DiagnosticsSorter) {
 	}
 }
 
-func registerEvidenceCatalogIDs(kb *model.KnowledgeBase, obj *model.Object, source []byte) {
-	re := regexp.MustCompile(`\*\*(ev:[a-z0-9-]+)\*\*`)
-	matches := re.FindAllSubmatch(source, -1)
-	for _, m := range matches {
-		if len(m) > 1 {
-			subID := string(m[1])
-			if _, exists := kb.Objects[subID]; !exists {
-				kb.Objects[subID] = &model.Object{
-					ID:         subID,
-					Type:       model.TypeEvidence,
-					SourceFile: obj.SourceFile,
-					Metadata: model.Metadata{
-						SchemaVersion: "1.0",
-						ID:            subID,
-						Type:          model.TypeEvidence,
-						Status:        model.StatusActive,
-						Verification:  model.VerificationIndependentlyVerified,
-						Confidence:    1.0,
-						Visibility:    model.VisibilityPublic,
-						LastUpdated:   time.Now(),
-						Lifecycle:     model.LifecycleActive,
-					},
-				}
+func registerEvidenceCatalogIDs(kb *model.KnowledgeBase, obj *model.Object, source []byte) []model.Diagnostic {
+	var diags []model.Diagnostic
+	rows := extractEvidenceCatalogRows(source)
+	for _, row := range rows {
+		if row.ID == "" {
+			continue
+		}
+		visibility := model.VisibilityConfidential
+		verification := model.VerificationUnverified
+		if row.Visibility != "" {
+			parsedVisibility, diag := parseVisibilityValue(row.Visibility, obj.SourceFile, row.Line, "Visibility")
+			if diag != nil {
+				diags = append(diags, *diag)
+				continue
+			}
+			visibility = parsedVisibility
+		}
+		if row.Verification != "" {
+			parsedVerification, diag := parseVerificationValue(row.Verification, obj.SourceFile, row.Line, "Verification Level")
+			if diag != nil {
+				diags = append(diags, *diag)
+				continue
+			}
+			verification = parsedVerification
+		}
+		if _, exists := kb.Objects[row.ID]; !exists {
+			kb.Objects[row.ID] = &model.Object{
+				ID:         row.ID,
+				Type:       model.TypeEvidence,
+				SourceFile: obj.SourceFile,
+				Metadata: model.Metadata{
+					SchemaVersion: "1.0",
+					ID:            row.ID,
+					Type:          model.TypeEvidence,
+					Status:        model.StatusActive,
+					Verification:  verification,
+					Confidence:    1.0,
+					Visibility:    visibility,
+					LastUpdated:   obj.Metadata.LastUpdated,
+					Lifecycle:     model.LifecycleActive,
+				},
 			}
 		}
 	}
+	return diags
+}
+
+type evidenceCatalogRow struct {
+	ID           string
+	Visibility   string
+	Verification string
+	Line         int
+}
+
+func extractEvidenceCatalogRows(source []byte) []evidenceCatalogRow {
+	md := goldmark.New(goldmark.WithExtensions(extension.Table))
+	doc := md.Parser().Parse(text.NewReader(source), gparser.WithContext(gparser.NewContext()))
+
+	var rows []evidenceCatalogRow
+	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		table, ok := n.(*extast.Table)
+		if !ok {
+			return ast.WalkContinue, nil
+		}
+
+		headerCells := tableHeaderCells(table)
+		headerIndex := make(map[string]int)
+		for idx, cell := range headerCells {
+			header := strings.TrimSpace(string(cell.Text(source)))
+			headerIndex[header] = idx
+		}
+		idIndex, hasEvidenceID := headerIndex["Evidence ID"]
+		if !hasEvidenceID {
+			return ast.WalkContinue, nil
+		}
+		visibilityIndex, hasVisibility := headerIndex["Visibility"]
+		verificationIndex, hasVerification := headerIndex["Verification Level"]
+
+		rowLine := 1
+		for child := table.FirstChild(); child != nil; child = child.NextSibling() {
+			row, ok := child.(*extast.TableRow)
+			if !ok {
+				continue
+			}
+			rowLine++
+			cells := tableRowCells(row)
+			if idIndex >= len(cells) {
+				continue
+			}
+			id := strings.TrimSpace(string(cells[idIndex].Text(source)))
+			if !idFormatRegex.MatchString(id) || !strings.HasPrefix(id, "ev:") {
+				continue
+			}
+			visibility := ""
+			if hasVisibility && visibilityIndex < len(cells) {
+				visibility = strings.TrimSpace(string(cells[visibilityIndex].Text(source)))
+			}
+			verification := ""
+			if hasVerification && verificationIndex < len(cells) {
+				verification = strings.TrimSpace(string(cells[verificationIndex].Text(source)))
+			}
+			rows = append(rows, evidenceCatalogRow{ID: id, Visibility: visibility, Verification: verification, Line: rowLine})
+		}
+
+		return ast.WalkSkipChildren, nil
+	})
+
+	return rows
+}
+
+func tableHeaderCells(table *extast.Table) []*extast.TableCell {
+	var cells []*extast.TableCell
+	for child := table.FirstChild(); child != nil; child = child.NextSibling() {
+		header, ok := child.(*extast.TableHeader)
+		if !ok {
+			continue
+		}
+		for cell := header.FirstChild(); cell != nil; cell = cell.NextSibling() {
+			if c, ok := cell.(*extast.TableCell); ok {
+				cells = append(cells, c)
+			}
+		}
+		break
+	}
+	return cells
+}
+
+func tableRowCells(row *extast.TableRow) []*extast.TableCell {
+	var cells []*extast.TableCell
+	for cell := row.FirstChild(); cell != nil; cell = cell.NextSibling() {
+		if c, ok := cell.(*extast.TableCell); ok {
+			cells = append(cells, c)
+		}
+	}
+	return cells
+}
+
+func extractTextRecursive(n ast.Node, source []byte) []byte {
+	var buf bytes.Buffer
+	var walk func(node ast.Node)
+	walk = func(node ast.Node) {
+		if node.Kind() == ast.KindListItem {
+			for _, line := range extractListItemLines(node, source) {
+				buf.WriteString("- ")
+				buf.WriteString(line)
+				buf.WriteByte('\n')
+			}
+			return
+		}
+
+		if node.Type() == ast.TypeBlock && node.Kind() != ast.KindList {
+			lines := node.Lines()
+			for j := 0; j < lines.Len(); j++ {
+				seg := lines.At(j)
+				buf.Write(seg.Value(source))
+			}
+			if lines.Len() > 0 && buf.Len() > 0 && buf.Bytes()[buf.Len()-1] != '\n' {
+				buf.WriteByte('\n')
+			}
+		}
+		for c := node.FirstChild(); c != nil; c = c.NextSibling() {
+			walk(c)
+			if c.Type() == ast.TypeBlock && buf.Len() > 0 && buf.Bytes()[buf.Len()-1] != '\n' {
+				buf.WriteByte('\n')
+			}
+		}
+	}
+	walk(n)
+	return buf.Bytes()
+}
+
+func extractListItemLines(item ast.Node, source []byte) []string {
+	var lines []string
+	var content bytes.Buffer
+
+	flushContent := func() {
+		text := normalizeListItemText(content.String())
+		if text != "" {
+			lines = append(lines, text)
+		}
+		content.Reset()
+	}
+
+	for c := item.FirstChild(); c != nil; c = c.NextSibling() {
+		if c.Kind() == ast.KindList {
+			flushContent()
+			for li := c.FirstChild(); li != nil; li = li.NextSibling() {
+				if li.Kind() == ast.KindListItem {
+					lines = append(lines, extractListItemLines(li, source)...)
+				}
+			}
+			continue
+		}
+		content.Write(extractNonListBlockText(c, source))
+	}
+
+	flushContent()
+	return lines
+}
+
+func extractNonListBlockText(n ast.Node, source []byte) []byte {
+	var buf bytes.Buffer
+	var walk func(node ast.Node)
+	walk = func(node ast.Node) {
+		if node.Kind() == ast.KindList || node.Kind() == ast.KindListItem {
+			return
+		}
+		if node.Type() == ast.TypeBlock {
+			lines := node.Lines()
+			for j := 0; j < lines.Len(); j++ {
+				seg := lines.At(j)
+				buf.Write(seg.Value(source))
+			}
+			if lines.Len() > 0 && buf.Len() > 0 && buf.Bytes()[buf.Len()-1] != '\n' {
+				buf.WriteByte('\n')
+			}
+		}
+		for c := node.FirstChild(); c != nil; c = c.NextSibling() {
+			walk(c)
+		}
+	}
+	walk(n)
+	return buf.Bytes()
+}
+
+func normalizeListItemText(raw string) string {
+	var parts []string
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			parts = append(parts, line)
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+func isAllowedInlineHTML(content string) bool {
+	if strings.HasPrefix(content, "<!--") && strings.HasSuffix(content, "-->") {
+		return true
+	}
+	t := strings.TrimPrefix(content, "<")
+	t = strings.TrimSuffix(t, ">")
+	t = strings.TrimSpace(t)
+	t = strings.TrimPrefix(t, "/")
+	t = strings.TrimSpace(t)
+	parts := strings.Fields(t)
+	if len(parts) == 0 {
+		return false
+	}
+	tagName := strings.ToLower(parts[0])
+	allowedInlineTags := map[string]bool{
+		"b":       true,
+		"i":       true,
+		"br":      true,
+		"details": true,
+		"summary": true,
+		"strong":  true,
+		"em":      true,
+		"code":    true,
+		"span":    true,
+		"a":       true,
+	}
+	return allowedInlineTags[tagName]
+}
+
+func sanitizeHTMLForMessage(content string) string {
+	if len(content) > 30 {
+		content = content[:27] + "..."
+	}
+	content = strings.ReplaceAll(content, "<", "&lt;")
+	content = strings.ReplaceAll(content, ">", "&gt;")
+	return content
+}
+
+func countUnescapedPipes(s string) int {
+	count := 0
+	escaped := false
+	for _, char := range s {
+		if char == '\\' {
+			escaped = !escaped
+		} else if char == '|' {
+			if !escaped {
+				count++
+			}
+			escaped = false
+		} else {
+			escaped = false
+		}
+	}
+	return count
 }

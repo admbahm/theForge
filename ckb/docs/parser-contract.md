@@ -66,6 +66,7 @@ The parser must enforce the following structural limits on the Markdown dialect:
     *   `Contribution` -> `contrib`
     *   `Reference` -> `ref`
     *   `Evidence` -> `ev`
+    *   `Education` -> `edu`
 *   **Casing**: Lowercase alphanumeric and hyphens.
 *   **Uniqueness**: Asserted globally across the scanned vault.
 *   **Path/Filename Independence**: The node identity is independent of the filename and its parent folder. Relocating `exp:stark-devops` to a different directory does not affect the logical graph.
@@ -77,6 +78,7 @@ The parser must enforce the following structural limits on the Markdown dialect:
 *   **Syntax**: Declared as a comma-separated list of target IDs (e.g. `ev:cert-aws, ev:cert-gcp`).
 *   **Direction**: Directed relationships pointing from source to target.
 *   **Cardinality**: Many-to-many unless constrained. E.g., `Related Projects` links to multiple projects.
+*   **Fanout Limit**: `MaxRelationshipsNode` counts all declared relationship targets across `Related Documents`, `Related Experience`, `Related Projects`, and `Related Evidence` after trimming empty comma-separated entries and before graph resolution. Duplicate declared targets count toward this limit and are not silently truncated.
 *   **Self-Reference / Cycles**: An object cannot link to itself (causes validation error).
 *   **Duplicate Edges**: Listing the same target ID twice in the same list is rejected.
 *   **Unresolved Reference**: Referencing a target ID that does not exist in the scanned set causes a fatal validation error.
@@ -91,7 +93,7 @@ The parser must enforce the following structural limits on the Markdown dialect:
     *   `Experience` -> `## 1. Role Context`, `## 2. Key Achievements`
     *   `Project` -> `## 1. Project Specifications`, `## 2. Architecture & Design Decisions`, `## 3. Implementation Details`, `## 4. Outcomes & Metrics`
 *   **Section Order**: Headings must appear in numeric order.
-*   **Prose Preservation**: The parser must preserve the body text under each section verbatim as a clean string, maintaining line breaks, lists, and bold text.
+*   **Section Body Preservation**: The parser must preserve prose under each section as a clean string, maintaining line breaks and inline Markdown such as bold text. Unordered list items are preserved semantically and emitted in canonical Markdown bullet form as `- <content>` regardless of whether the source marker was `-`, `*`, or `+`. GFM tables inside a section are preserved as Markdown table lines in `Section.Body` for downstream header-based extraction.
 
 ---
 
@@ -142,7 +144,7 @@ Conforming parser executions must execute in the following deterministic sequenc
 4.  **Section Check**: Assert presence of mandatory headers for the specified Type.
 5.  **Global Indexing**: Register ID globally. Throw fatal error if duplicate ID is found.
 6.  **Relation Resolution**: Resolve comma-separated IDs against the global ID index. Throw fatal error if any target is missing (broken reference).
-7.  **Graph Integrity checks**: Assert no self-loops, validate type-prefix constraints.
+7.  **Graph Integrity checks**: Assert no self-loops, validate relationship target compatibility using resolved target object types.
 8.  **Orphan / Quality Checks**: Identify unreferenced evidence nodes, calculate diagnostics.
 9.  **PII Scan**: Regex scan for unauthorized personal patterns.
 10. **Output Output JSON / AST**.
@@ -155,5 +157,7 @@ To guarantee that two independent implementations yield equivalent output, the J
 *   Sort all objects in the top-level list **alphabetically by ID** (e.g. `acc:cloud-savings` before `exp:stark-devops`).
 *   Sort all relation arrays **alphabetically by ID** (e.g. `ev:adr-012, ev:eval-stark-2025`).
 *   Standardize date formatting to `YYYY-MM-DD`.
+*   Synthetic evidence rows inherit a deterministic source-derived `Last Updated` timestamp from their parent evidence catalog object.
+*   Synthetic evidence rows preserve the row-level `Visibility` and `Verification Level` values from the evidence catalog. If the catalog table omits `Visibility`, synthetic evidence defaults to `Confidential`. If it omits `Verification Level`, synthetic evidence defaults to `Unverified`. Invalid visibility or verification values emit `CKB-METADATA-INVALID-ENUM` and are not treated as public, independently verified evidence.
 *   Represent floats to two decimal places (e.g. `0.95`).
 *   Format diagnostics list in order of appearance (by file path, then line number).

@@ -30,12 +30,20 @@ This document defines the stable, public diagnostic error codes emitted by the C
 *   **Remediation**: Ensure all CKB files declare globally unique IDs.
 *   **Continue Parsing**: No (fatal).
 
+### 3A. `CKB-IDENTITY-PREFIX-TYPE-MISMATCH`
+*   **Severity**: `Fatal`
+*   **Category**: Identity
+*   **Meaning**: The ID prefix does not match the declared object `Type`.
+*   **Common Cause**: Copying a metadata table and changing `Type` without changing `ID`, such as `ID: exp:foo` with `Type: Project`.
+*   **Remediation**: Use the canonical type prefix from the schema, for example `proj:` for `Project` or `edu:` for `Education`.
+*   **Continue Parsing**: No.
+
 ### 4. `CKB-METADATA-INVALID-OBJECT-TYPE`
 *   **Severity**: `Fatal`
 *   **Category**: Metadata
-*   **Meaning**: The `Type` field is not one of the 10 allowed types.
+*   **Meaning**: The `Type` field is not one of the allowed object types.
 *   **Common Cause**: spelling or casing error in type (e.g., `JobExperience` instead of `Experience`).
-*   **Remediation**: Change type to one of: `Profile`, `Timeline`, `Experience`, `Project`, `Skill`, `Accomplishment`, `Credential`, `Contribution`, `Reference`, `Evidence`.
+*   **Remediation**: Change type to one of: `Profile`, `Timeline`, `Experience`, `Project`, `Skill`, `Accomplishment`, `Credential`, `Contribution`, `Reference`, `Evidence`, `Education`.
 *   **Continue Parsing**: No (fatal).
 
 ### 5. `CKB-METADATA-MISSING-FIELD`
@@ -134,6 +142,14 @@ This document defines the stable, public diagnostic error codes emitted by the C
 *   **Remediation**: Reference the evidence in your experiences/projects metadata blocks, or remove it.
 *   **Continue Parsing**: Yes.
 
+### 16A. `CKB-EVIDENCE-UNRESOLVED`
+*   **Severity**: `Warning`
+*   **Category**: Evidence
+*   **Meaning**: A selected claim referenced evidence that could not be authorized as resolved, policy-permitted provenance.
+*   **Common Cause**: Typo, deleted evidence row, malformed evidence ID, wrong target type, restricted visibility, or ineligible evidence state.
+*   **Remediation**: Fix the evidence reference or add a resolvable Evidence catalog row with policy-permitted visibility before relying on it as provenance.
+*   **Continue Parsing**: Yes. The unsafe evidence ID is removed from public outputs.
+
 ### 17. `CKB-VERSION-UNSUPPORTED`
 *   **Severity**: `Error`
 *   **Category**: Version
@@ -158,9 +174,83 @@ This document defines the stable, public diagnostic error codes emitted by the C
 *   **Remediation**: Reduce file sizing or partition project directories.
 *   **Continue Parsing**: No.
 
+### 19A. `CKB-LIMIT-RELATIONSHIPS-EXCEEDED`
+*   **Severity**: `Fatal`
+*   **Category**: Security
+*   **Meaning**: A single object declares more relationship targets than `MaxRelationshipsNode`.
+*   **Common Cause**: Very large comma-separated relationship lists, or duplicate targets repeated in relationship metadata rows.
+*   **Remediation**: Reduce declared relationship fanout or split the source record. Duplicate declared targets count toward the limit before duplicate-edge validation.
+*   **Continue Parsing**: No.
+
 ### 20. `CKB-STRUCTURE-MALFORMED`
 *   **Severity**: `Fatal`
 *   **Category**: Structure
 *   **Meaning**: General markdown syntax structure error or parsing cancellation.
 *   **Remediation**: Check markdown syntax or timeout configuration.
 *   **Continue Parsing**: No.
+
+### 21. `CKB-PLAN-CONFLICT-DETECTED`
+*   **Severity**: `Error`
+*   **Category**: Planning
+*   **Meaning**: Conflicting claims detected during target planning.
+*   **Remediation**: Add an override block inside PlanRequest to resolve the conflict.
+
+### 22. `CKB-PLAN-PROVENANCE-INCOMPLETE`
+*   **Severity**: `Fatal`
+*   **Category**: Planning
+*   **Meaning**: Selected claim lacks required source graph links or files.
+*   **Remediation**: Re-run parser to verify node graph integrity.
+
+### 23. `CKB-RENDER-INVALID-PLAN`
+*   **Severity**: `Fatal`
+*   **Category**: Rendering
+*   **Meaning**: Passed plan is nil or contains a malformed version format.
+*   **Remediation**: Re-compile plan using the planning builder.
+
+### 24. `CKB-RENDER-UNSUPPORTED-ARTIFACT`
+*   **Severity**: `Fatal`
+*   **Category**: Rendering
+*   **Meaning**: Requested target artifact type is not supported.
+*   **Remediation**: Set type to one of: resume, cv, biography, star-story, skills-summary.
+
+### 25. `CKB-RENDER-MISSING-PROVENANCE`
+*   **Severity**: `Fatal`
+*   **Category**: Rendering
+*   **Meaning**: A claim selected in the plan lacks any source file provenance.
+*   **Remediation**: Correct source path tracking in planner registry.
+
+### 26. `CKB-RENDER-VISIBILITY-VIOLATION`
+*   **Severity**: `Fatal`
+*   **Category**: Rendering
+*   **Meaning**: Confidential claims are about to leak in public scopes.
+*   **Remediation**: Ensure policy AllowedVisibilities match the claims.
+
+### 27. `CKB-RENDER-BLOCKING-CONFLICT`
+*   **Severity**: `Fatal`
+*   **Category**: Rendering
+*   **Meaning**: Render is halted due to unresolved active conflicts.
+*   **Remediation**: Declare overrides to resolve conflict.
+
+### 27A. `CKB-RENDER-NONBLOCKING-CONFLICT`
+*   **Severity**: `Warning`
+*   **Category**: Rendering
+*   **Meaning**: A non-blocking planning conflict was retained for audit visibility while rendering continued.
+*   **Remediation**: Review the source claims if the warning affects the target artifact.
+
+### 28. `CKB-RENDER-INCOMPLETE-STAR`
+*   **Severity**: `Fatal` / `Warning`
+*   **Category**: Rendering
+*   **Meaning**: A STAR story is missing situation/task/action/result.
+*   **Remediation**: Add missing components in CKB experience markdown.
+
+### 29. `CKB-RENDER-BUDGET-EXCEEDED`
+*   **Severity**: `Warning`
+*   **Category**: Rendering
+*   **Meaning**: Configured count budgets exceeded.
+*   **Remediation**: Reduce target limits or select fewer items in plan.
+
+### 30. `CKB-RENDER-STRENGTH-UPGRADE`
+*   **Severity**: `Warning`
+*   **Category**: Rendering
+*   **Meaning**: Adapted prose keyword ranks higher than source claim.
+*   **Remediation**: Weaken or preserve original action verbs.
