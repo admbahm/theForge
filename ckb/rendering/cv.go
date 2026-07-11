@@ -71,6 +71,9 @@ func RenderCV(req RenderRequest, policy claims.Policy) ([]ArtifactSection, []str
 			dates = fmt.Sprintf(" (%s – %s)", startStr, endStr)
 		}
 		roleTitle := c.Statement
+		if c.Kind == claims.KindRole && strings.TrimSpace(string(c.Value)) != "" {
+			roleTitle = strings.TrimSpace(string(c.Value))
+		}
 		if c.Kind == claims.KindEmployment {
 			roleTitle = strings.TrimPrefix(roleTitle, "Employed at ")
 		}
@@ -78,7 +81,7 @@ func RenderCV(req RenderRequest, policy claims.Policy) ([]ArtifactSection, []str
 		expEntries = append(expEntries, ArtifactEntry{
 			ID:              fmt.Sprintf("entry:cv-experience-role-%d", roleIndex),
 			Kind:            "subheader",
-			Text:            fmt.Sprintf("%s at %s%s", roleTitle, orgName, dates),
+			Text:            formatCVRoleHeading(roleTitle, orgName, dates),
 			ClaimIDs:        []claims.ClaimID{c.ID},
 			SourceObjectIDs: c.SourceObjectIDs,
 		})
@@ -266,4 +269,23 @@ func RenderCV(req RenderRequest, policy claims.Policy) ([]ArtifactSection, []str
 	}
 
 	return sections, warnings
+}
+
+func formatCVRoleHeading(roleTitle string, orgName string, dates string) string {
+	roleTitle = strings.TrimSpace(roleTitle)
+	orgName = strings.TrimSpace(orgName)
+
+	if orgName == "" || orgName == "Other Experience" {
+		if roleTitle == "" {
+			return strings.TrimSpace("Other Experience" + dates)
+		}
+		return strings.TrimSpace(roleTitle + dates)
+	}
+	if roleTitle == "" {
+		return strings.TrimSpace(orgName + dates)
+	}
+	if strings.Contains(roleTitle, orgName) {
+		return strings.TrimSpace(roleTitle + dates)
+	}
+	return strings.TrimSpace(fmt.Sprintf("%s at %s%s", roleTitle, orgName, dates))
 }

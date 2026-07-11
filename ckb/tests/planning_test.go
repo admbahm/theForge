@@ -823,6 +823,16 @@ func selectedClaims(plan *planning.ArtifactPlan) []claims.Claim {
 	return selected
 }
 
+func claimsByValue(all []claims.Claim, value string) []claims.Claim {
+	var matches []claims.Claim
+	for _, c := range all {
+		if string(c.Value) == value {
+			matches = append(matches, c)
+		}
+	}
+	return matches
+}
+
 func planClaimIDs(plan *planning.ArtifactPlan) []claims.ClaimID {
 	ids := make([]claims.ClaimID, 0, len(plan.SelectedClaims))
 	for _, pc := range plan.SelectedClaims {
@@ -959,6 +969,90 @@ func TestDeduplication(t *testing.T) {
 	m := deduped[0]
 	if len(m.SourceObjectIDs) != 2 || m.SourceObjectIDs[0] != "exp:acme" || m.SourceObjectIDs[1] != "proj:phoenix" {
 		t.Errorf("Expected merged claim to aggregate source IDs, got %v", m.SourceObjectIDs)
+	}
+}
+
+func TestPolicySafeDeduplicationPreservesPublicDuplicate(t *testing.T) {
+	kb := model.NewKnowledgeBase()
+	kb.Objects["skill:public-duplicate"] = skillMatrixObject("skill:public-duplicate", []model.Section{{
+		Heading: "## 1. Skill Matrix by Domain",
+		Body: `| Skill Name | Proficiency | Confidence | Years | Last Used | Related Experience | Related Projects | Supporting Evidence |
+| :--- | :--- | :---: | :---: | :---: | :--- | :--- | :--- |
+| **Go** | Advanced | 0.95 | 5 | Present | None | None | [ev:public-duplicate](./evidence.md) |`,
+	}})
+	kb.Objects["skill:internal-duplicate"] = skillMatrixObject("skill:internal-duplicate", []model.Section{{
+		Heading: "## 1. Skill Matrix by Domain",
+		Body: `| Skill Name | Proficiency | Confidence | Years | Last Used | Related Experience | Related Projects | Supporting Evidence |
+| :--- | :--- | :---: | :---: | :---: | :--- | :--- | :--- |
+| **Go** | Advanced | 0.95 | 5 | Present | None | None | [ev:restricted-dedupe-canary](./evidence.md) |`,
+	}})
+	kb.Objects["skill:confidential-duplicate"] = skillMatrixObject("skill:confidential-duplicate", []model.Section{{
+		Heading: "## 1. Skill Matrix by Domain",
+		Body: `| Skill Name | Proficiency | Confidence | Years | Last Used | Related Experience | Related Projects | Supporting Evidence |
+| :--- | :--- | :---: | :---: | :---: | :--- | :--- | :--- |
+| **Go** | Advanced | 0.95 | 5 | Present | None | None | [ev:confidential-dedupe-canary](./evidence.md) |`,
+	}})
+	kb.Objects["skill:internal-duplicate"].Metadata.Visibility = model.VisibilityInternal
+	kb.Objects["skill:confidential-duplicate"].Metadata.Visibility = model.VisibilityConfidential
+	kb.Objects["ev:public-duplicate"] = evidenceObject("ev:public-duplicate", model.VisibilityPublic)
+	kb.Objects["ev:restricted-dedupe-canary"] = evidenceObject("ev:restricted-dedupe-canary", model.VisibilityInternal)
+	kb.Objects["ev:confidential-dedupe-canary"] = evidenceObject("ev:confidential-dedupe-canary", model.VisibilityConfidential)
+
+	publicPlan := buildEvidenceAuthPlan(t, kb, planning.PolicyStrictPublic, planning.TypeSkillsSummary)
+	publicGoClaims := claimsByValue(selectedClaims(publicPlan), "Go")
+	if len(publicGoClaims) != 1 {
+		t.Fatalf("Expected public duplicate to survive once under StrictPublic, got %+v", publicGoClaims)
+	}
+	if strings.Join(publicGoClaims[0].SourceObjectIDs, ",") != "skill:public-duplicate" {
+		t.Fatalf("Restricted duplicate provenance leaked into public claim: %+v", publicGoClaims[0].SourceObjectIDs)
+	}
+	if strings.Join(publicGoClaims[0].EvidenceObjectIDs, ",") != "ev:public-duplicate" {
+		t.Fatalf("Restricted duplicate evidence leaked into public claim: %+v", publicGoClaims[0].EvidenceObjectIDs)
+	}
+
+	renderRes := rendering.Render(context.Background(), rendering.RenderRequest{Plan: publicPlan})
+	if renderRes.Artifact == nil {
+		t.Fatalf("Expected public skills artifact, got diagnostics: %+v", renderRes.Diagnostics)
+	}
+	var planJSON, artifactJSON, sidecarJSON, markdownOut, textOut bytes.Buffer
+	if err := export.ExportPlanJSON(publicPlan, &planJSON); err != nil {
+		t.Fatalf("ExportPlanJSON failed: %v", err)
+	}
+	if err := export.ExportArtifactJSON(renderRes.Artifact, &artifactJSON); err != nil {
+		t.Fatalf("ExportArtifactJSON failed: %v", err)
+	}
+	if err := export.ExportProvenanceSidecar(renderRes.Artifact, &sidecarJSON); err != nil {
+		t.Fatalf("ExportProvenanceSidecar failed: %v", err)
+	}
+	if err := export.ExportMarkdown(renderRes.Artifact, &markdownOut, export.MarkdownOptions{IncludeHeadings: true, DebugProvenance: true}); err != nil {
+		t.Fatalf("ExportMarkdown failed: %v", err)
+	}
+	if err := export.ExportText(renderRes.Artifact, &textOut, export.TextOptions{IncludeHeadings: true, DebugProvenance: true}); err != nil {
+		t.Fatalf("ExportText failed: %v", err)
+	}
+	for label, data := range map[string][]byte{
+		"plan JSON":          planJSON.Bytes(),
+		"artifact JSON":      artifactJSON.Bytes(),
+		"provenance sidecar": sidecarJSON.Bytes(),
+		"markdown":           markdownOut.Bytes(),
+		"text":               textOut.Bytes(),
+	} {
+		for _, restricted := range []string{"skill:internal-duplicate", "skill:confidential-duplicate", "ev:restricted-dedupe-canary", "ev:confidential-dedupe-canary"} {
+			if bytes.Contains(data, []byte(restricted)) {
+				t.Fatalf("%s leaked restricted duplicate canary %s:\n%s", label, restricted, string(data))
+			}
+		}
+	}
+
+	internalPlan := buildEvidenceAuthPlan(t, kb, planning.PolicyInternalRecord, planning.TypeSkillsSummary)
+	internalGoClaims := claimsByValue(selectedClaims(internalPlan), "Go")
+	if len(internalGoClaims) != 3 {
+		t.Fatalf("Expected internal policy to retain all authorization variants, got %+v", internalGoClaims)
+	}
+
+	repeatPlan := buildEvidenceAuthPlan(t, kb, planning.PolicyStrictPublic, planning.TypeSkillsSummary)
+	if strings.Join(claimIDsToStrings(planClaimIDs(publicPlan)), ",") != strings.Join(claimIDsToStrings(planClaimIDs(repeatPlan)), ",") {
+		t.Fatal("Expected repeated policy-safe dedupe planning to be deterministic")
 	}
 }
 

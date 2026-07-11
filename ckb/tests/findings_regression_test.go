@@ -284,10 +284,11 @@ func TestRejectRawHTMLBeforeParsing(t *testing.T) {
 | **Last Updated** | 2026-07-11 |
 | **Lifecycle State** | Active |
 
-## Role Context
+## 1. Role Context
 - Role: Engineer
 
-## Details
+## 2. Key Achievements
+- Delivered a synthetic outcome.
 `
 
 	expectedLine := strings.Count(baseFM, "\n") + 1
@@ -376,8 +377,11 @@ func TestRequireExactlyTwoMetadataTableColumns(t *testing.T) {
 | **Last Updated** | 2026-07-11 |
 | **Lifecycle State** | Active |
 
-## Role Context
+## 1. Role Context
 - Role: Engineer
+
+## 2. Key Achievements
+- Delivered a synthetic outcome.
 `
 	obj1, diags1 := parseTempFile(t, "exp:valid-meta.md", baseFM)
 	assertNoFatal(t, diags1)
@@ -440,8 +444,11 @@ func TestRequireExactlyTwoMetadataTableColumns(t *testing.T) {
 | **Lifecycle State** | Active |
 | **Tags** | tag1 \| tag2 |
 
-## Role Context
+## 1. Role Context
 - Role: Engineer
+
+## 2. Key Achievements
+- Delivered a synthetic outcome.
 `
 	obj7, diags7 := parseTempFile(t, "exp:escaped-pipe.md", fm7)
 	assertNoFatal(t, diags7)
@@ -457,6 +464,102 @@ func TestRequireExactlyTwoMetadataTableColumns(t *testing.T) {
 			t.Error("Diagnostics were not sorted deterministically by line number")
 		}
 	}
+}
+
+func TestRequiredSectionsBeforeObjectRegistration(t *testing.T) {
+	validExperience := metadataDoc("exp:valid-required", model.TypeExperience) + `## 1. Role Context
+- Role: Engineer
+
+## 2. Key Achievements
+- Delivered a synthetic result.
+`
+	obj, diags := parseTempFile(t, "valid-required.md", validExperience)
+	assertNoFatal(t, diags)
+	if obj == nil {
+		t.Fatalf("Expected valid Experience with required sections to register; diagnostics: %+v", diags)
+	}
+
+	missingRoleContext := metadataDoc("exp:missing-role", model.TypeExperience) + `## 2. Key Achievements
+- Delivered a synthetic result.
+`
+	obj, diags = parseTempFile(t, "missing-role.md", missingRoleContext)
+	if obj != nil {
+		t.Fatal("Experience missing Role Context must not register an object")
+	}
+	assertFatalCode(t, diags, model.CodeSectionMissingRequired)
+
+	wrongLevel := metadataDoc("exp:wrong-level", model.TypeExperience) + `# 1. Role Context
+- Role: Engineer
+
+## 2. Key Achievements
+- Delivered a synthetic result.
+`
+	obj, diags = parseTempFile(t, "wrong-level.md", wrongLevel)
+	if obj != nil {
+		t.Fatal("Experience with wrong required heading level must not register an object")
+	}
+	assertFatalCode(t, diags, model.CodeSectionMissingRequired)
+
+	duplicateRequired := metadataDoc("exp:duplicate-section", model.TypeExperience) + `## 1. Role Context
+- Role: Engineer
+
+## 1. Role Context
+- Role: Engineer again
+
+## 2. Key Achievements
+- Delivered a synthetic result.
+`
+	obj, diags = parseTempFile(t, "duplicate-section.md", duplicateRequired)
+	if obj != nil {
+		t.Fatal("Experience with duplicate required section must not register an object")
+	}
+	assertFatalCode(t, diags, model.CodeStructureMalformed)
+
+	missingProjectSection := metadataDoc("proj:missing-required", model.TypeProject) + `## 1. Project Specifications
+- Synthetic specification.
+
+## 2. Architecture & Design Decisions
+- Synthetic decision.
+
+## 4. Outcomes & Metrics
+- Synthetic outcome.
+`
+	obj, diags = parseTempFile(t, "missing-project-section.md", missingProjectSection)
+	if obj != nil {
+		t.Fatal("Project missing Implementation Details must not register an object")
+	}
+	assertFatalCode(t, diags, model.CodeSectionMissingRequired)
+
+	firstObj, firstDiags := parseTempFile(t, "missing-role-det.md", missingRoleContext)
+	secondObj, secondDiags := parseTempFile(t, "missing-role-det.md", missingRoleContext)
+	if firstObj != nil || secondObj != nil {
+		t.Fatal("Malformed required-section fixture should not register on repeated parse")
+	}
+	if len(firstDiags) != len(secondDiags) {
+		t.Fatalf("Expected deterministic diagnostic count, got %d vs %d", len(firstDiags), len(secondDiags))
+	}
+	for i := range firstDiags {
+		if firstDiags[i].Code != secondDiags[i].Code || firstDiags[i].Message != secondDiags[i].Message {
+			t.Fatalf("Expected deterministic diagnostics, got %+v vs %+v", firstDiags, secondDiags)
+		}
+	}
+}
+
+func metadataDoc(id string, typ model.ObjectType) string {
+	return `| Metadata | Value |
+| --- | --- |
+| **Schema Version** | 1.0 |
+| **ID** | ` + id + ` |
+| **Type** | ` + string(typ) + ` |
+| **Status** | Active |
+| **Verification Level** | Self-Attested |
+| **Confidence** | 1.0 |
+| **Visibility** | Public |
+| **Source** | synthetic-fixture |
+| **Last Updated** | 2026-07-11 |
+| **Lifecycle State** | Active |
+
+`
 }
 
 // Diagnostic asserts

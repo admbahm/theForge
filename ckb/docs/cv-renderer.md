@@ -17,7 +17,7 @@ The section order of the CV is dynamically re-sorted depending on the selected s
 
 ## 2. Content Sections
 *   **Professional Profile (Summary)**: Objective statement or career summary.
-*   **Detailed Experience**: Complete promotion history and achievement lists.
+*   **Detailed Experience**: Complete promotion history and achievement lists. Role headings prefer structured role/title and organization fields; the organization is rendered once with the date range and is not appended again when the role statement already includes it.
 *   **Skills**: Detailed skill bullet points.
 *   **Education History**: Academic degrees and institutions.
 *   **Professional Certifications**: Credentials and licenses.

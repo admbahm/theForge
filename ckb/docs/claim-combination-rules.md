@@ -14,6 +14,8 @@ Renderers may combine separate claims into one statement only when:
 *   The merged statement does not upgrade or inflate the strength of either claim.
 *   The combined statement retains the union of all claim IDs in its `ClaimIDs` audit property.
 
+Claim deduplication preserves policy-relevant authorization variants. Claims with the same normalized statement but different visibility, verification, status, or lifecycle are not collapsed before policy eligibility is evaluated. This prevents restricted provenance from suppressing or contaminating an independently valid public claim.
+
 ---
 
 ## 2. Technical Implementation: Skill Combination

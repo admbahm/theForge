@@ -317,6 +317,58 @@ func TestResumeSkillEntriesCarryUnionedProvenance(t *testing.T) {
 	}
 }
 
+func TestCVRoleHeadingDoesNotDuplicateOrganization(t *testing.T) {
+	role := resumeRoleClaim("claim:cv:role:org", "Platform Engineer", "Example Systems", "exp:cv-org")
+	role.Value = "Platform Engineer"
+	plan := skillArtifactPlan(planning.TypeCV, []claims.Claim{role})
+
+	first := rendering.Render(context.Background(), rendering.RenderRequest{Plan: plan})
+	second := rendering.Render(context.Background(), rendering.RenderRequest{Plan: plan})
+	if first.Artifact == nil || second.Artifact == nil {
+		t.Fatalf("Expected CV artifacts, got diagnostics: %+v / %+v", first.Diagnostics, second.Diagnostics)
+	}
+	rendered := renderedEntryTexts(first.Artifact)
+	if !containsString(rendered, "Platform Engineer at Example Systems (2022-01 – 2024-01)") {
+		t.Fatalf("Expected structured role heading with one organization reference, got %+v", rendered)
+	}
+	for _, text := range rendered {
+		if strings.Contains(text, "Example Systems at Example Systems") {
+			t.Fatalf("CV heading duplicated organization: %q", text)
+		}
+	}
+	if strings.Join(renderedEntryTexts(first.Artifact), "\n") != strings.Join(renderedEntryTexts(second.Artifact), "\n") {
+		t.Fatal("Expected deterministic CV role heading output")
+	}
+}
+
+func TestCVRoleHeadingFallbacksRenderSafely(t *testing.T) {
+	orgless := resumeRoleClaim("claim:cv:role:no-org", "Independent Engineer", "", "exp:no-org")
+	orgless.Statement = "Served as Independent Engineer"
+	orgless.Value = "Independent Engineer"
+	orgless.Organizations = nil
+	employmentOnly := resumeRoleClaim("claim:cv:employment", "Example Systems", "Example Systems", "exp:employment")
+	employmentOnly.Kind = claims.KindEmployment
+	employmentOnly.Statement = "Employed at Example Systems"
+	employmentOnly.Value = ""
+
+	res := rendering.Render(context.Background(), rendering.RenderRequest{Plan: skillArtifactPlan(planning.TypeCV, []claims.Claim{orgless, employmentOnly})})
+	if res.Artifact == nil {
+		t.Fatalf("Expected CV artifact, got diagnostics: %+v", res.Diagnostics)
+	}
+	rendered := renderedEntryTexts(res.Artifact)
+	if !containsString(rendered, "Independent Engineer (2022-01 – 2024-01)") {
+		t.Fatalf("Expected organization-less role fallback without dangling separator, got %+v", rendered)
+	}
+	if !containsString(rendered, "Example Systems (2022-01 – 2024-01)") {
+		t.Fatalf("Expected employment-only fallback with one organization reference, got %+v", rendered)
+	}
+	for _, text := range rendered {
+		if strings.Contains(text, " at  ") || strings.Contains(text, " at (") || strings.Contains(text, "Example Systems at Example Systems") {
+			t.Fatalf("Unsafe CV heading fallback: %q", text)
+		}
+	}
+}
+
 func TestCVSkillEntriesCarryProvenance(t *testing.T) {
 	skill := skillClaim("claim:skill:cv", claims.KindTechnicalSkill, "Utilized technologies: Go", []string{"skill:cv"}, []string{"ev:cv"})
 	res := rendering.Render(context.Background(), rendering.RenderRequest{Plan: skillArtifactPlan(planning.TypeCV, []claims.Claim{skill})})
@@ -558,6 +610,16 @@ func skillClaim(id claims.ClaimID, kind claims.ClaimKind, statement string, sour
 		Confidence:        0.9,
 		Status:            "Active",
 	}
+}
+
+func renderedEntryTexts(artifact *rendering.Artifact) []string {
+	var out []string
+	for _, section := range artifact.Sections {
+		for _, entry := range section.Entries {
+			out = append(out, entry.Text)
+		}
+	}
+	return out
 }
 
 func skillArtifactPlan(artifactType planning.ArtifactType, skillClaims []claims.Claim) *planning.ArtifactPlan {

@@ -36,6 +36,7 @@ const (
 	CodeMetadataInvalidColumnCount DiagnosticCode = "CKB-METADATA-INVALID-COLUMN-COUNT"
 	CodeMetadataInvalidHeader      DiagnosticCode = "CKB-METADATA-INVALID-HEADER"
 	CodeMetadataMalformedRow       DiagnosticCode = "CKB-METADATA-MALFORMED-ROW"
+	CodeSectionMissingRequired     DiagnosticCode = "CKB-SECTION-MISSING-REQUIRED"
 )
 
 // DiagnosticSeverity defines the severity levels of diagnostic output.

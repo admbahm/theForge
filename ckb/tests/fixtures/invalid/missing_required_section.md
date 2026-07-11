@@ -1,23 +1,18 @@
 | Metadata | Value |
 | :--- | :--- |
 | **Schema Version** | 1.0 |
-| **ID** | exp:self-ref |
+| **ID** | exp:missing-required-section |
 | **Type** | Experience |
 | **Status** | Active |
 | **Verification Level** | Self-Attested |
-| **Confidence** | 1.00 |
+| **Confidence** | 0.90 |
 | **Visibility** | Public |
-| **Source** | Self |
+| **Source** | Synthetic Test Fixture |
 | **Last Updated** | 2026-07-10 |
 | **Lifecycle State** | Active |
-| **Related Experience** | exp:self-ref |
 
 ---
 
-## 1. Role Context
-
-- Role: Synthetic Engineer
-
 ## 2. Key Achievements
 
-- Synthetic self-reference fixture achievement.
+- Delivered a synthetic result without the required role context.

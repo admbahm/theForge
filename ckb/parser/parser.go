@@ -44,6 +44,57 @@ var canonicalOptionalKeys = map[string]bool{
 	"Tags":               true,
 }
 
+type requiredSection struct {
+	Level int
+	Title string
+}
+
+var requiredSectionsByType = map[model.ObjectType][]requiredSection{
+	model.TypeProfile: {
+		{Level: 2, Title: "1. Professional Vision"},
+		{Level: 2, Title: "2. Core Target Profile"},
+		{Level: 2, Title: "3. Technology Alignment Priorities"},
+		{Level: 2, Title: "4. Career Constraints & Non-Negotiables"},
+	},
+	model.TypeTimeline: {
+		{Level: 2, Title: "1. Timeline Structure"},
+		{Level: 2, Title: "2. Chronological Log"},
+	},
+	model.TypeExperience: {
+		{Level: 2, Title: "1. Role Context"},
+		{Level: 2, Title: "2. Key Achievements"},
+	},
+	model.TypeProject: {
+		{Level: 2, Title: "1. Project Specifications"},
+		{Level: 2, Title: "2. Architecture & Design Decisions"},
+		{Level: 2, Title: "3. Implementation Details"},
+		{Level: 2, Title: "4. Outcomes & Metrics"},
+	},
+	model.TypeSkill: {
+		{Level: 2, Title: "1. Skill Matrix by Domain"},
+	},
+	model.TypeAccomplishment: {
+		{Level: 2, Title: "1. Standalone Accomplishments"},
+	},
+	model.TypeCredential: {
+		{Level: 2, Title: "1. Professional Certifications"},
+		{Level: 2, Title: "2. Professional Training Log"},
+	},
+	model.TypeContribution: {
+		{Level: 2, Title: "1. Speaking Engagements"},
+		{Level: 2, Title: "2. Publications & Technical Writing"},
+	},
+	model.TypeReference: {
+		{Level: 2, Title: "1. Professional Vouchers (Contact-Free)"},
+	},
+	model.TypeEvidence: {
+		{Level: 2, Title: "1. Relational Evidence Catalog"},
+	},
+	model.TypeEducation: {
+		{Level: 2, Title: "1. Academic Credentials"},
+	},
+}
+
 // PII Regex Filters
 var (
 	emailRegex = regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`)
@@ -364,6 +415,10 @@ func parseSingleFile(path string, limits Limits, options ParseOptions) (*model.O
 	// Parse body sections
 	sections, sectionDiags := parseMarkdownBodySections(doc, data, path, limits)
 	diags = append(diags, sectionDiags...)
+	diags = append(diags, validateRequiredSections(meta.Type, sections, path, meta.ID)...)
+	if hasFatalDiagnostic(diags) {
+		return nil, diags
+	}
 
 	// Construct relationships from metadata
 	relationships := constructRelations(meta, path)
@@ -911,6 +966,86 @@ func parseMarkdownBodySections(doc ast.Node, source []byte, path string, limits 
 	}
 
 	return sections, diags
+}
+
+func validateRequiredSections(objType model.ObjectType, sections []model.Section, path string, objectID string) []model.Diagnostic {
+	required := requiredSectionsByType[objType]
+	if len(required) == 0 {
+		return nil
+	}
+
+	var diags []model.Diagnostic
+	positions := make(map[string][]int)
+	levels := make(map[string][]int)
+	for idx, section := range sections {
+		level, title := parseSectionHeading(section.Heading)
+		key := canonicalSectionTitle(title)
+		positions[key] = append(positions[key], idx)
+		levels[key] = append(levels[key], level)
+	}
+
+	lastPosition := -1
+	for _, req := range required {
+		key := canonicalSectionTitle(req.Title)
+		matches := positions[key]
+		if len(matches) == 0 {
+			diags = append(diags, missingRequiredSectionDiagnostic(path, objectID, objType, req, "missing required section"))
+			continue
+		}
+		if len(matches) > 1 {
+			diags = append(diags, model.Diagnostic{
+				Code:        model.CodeStructureMalformed,
+				Severity:    model.SeverityFatal,
+				Message:     fmt.Sprintf("Duplicate required section %q for object type %q", req.Title, objType),
+				Source:      model.SourceLocation{FilePath: path, Line: matches[1] + 1},
+				ObjectID:    objectID,
+				Section:     req.Title,
+				Remediation: "Keep exactly one instance of each required section heading.",
+			})
+		}
+		if levels[key][0] != req.Level {
+			diags = append(diags, missingRequiredSectionDiagnostic(path, objectID, objType, req, "required section has the wrong heading level"))
+		}
+		if matches[0] < lastPosition {
+			diags = append(diags, model.Diagnostic{
+				Code:        model.CodeStructureMalformed,
+				Severity:    model.SeverityFatal,
+				Message:     fmt.Sprintf("Required section %q appears out of order for object type %q", req.Title, objType),
+				Source:      model.SourceLocation{FilePath: path, Line: matches[0] + 1},
+				ObjectID:    objectID,
+				Section:     req.Title,
+				Remediation: "Order required sections according to the CKB parser contract.",
+			})
+		}
+		lastPosition = matches[0]
+	}
+
+	return diags
+}
+
+func missingRequiredSectionDiagnostic(path string, objectID string, objType model.ObjectType, req requiredSection, reason string) model.Diagnostic {
+	return model.Diagnostic{
+		Code:        model.CodeSectionMissingRequired,
+		Severity:    model.SeverityFatal,
+		Message:     fmt.Sprintf("Required section %q is invalid for object type %q: %s", strings.Repeat("#", req.Level)+" "+req.Title, objType, reason),
+		Source:      model.SourceLocation{FilePath: path, Line: 1},
+		ObjectID:    objectID,
+		Section:     fmt.Sprintf("%s %s", strings.Repeat("#", req.Level), req.Title),
+		Remediation: "Add the required heading exactly as documented in the CKB parser contract.",
+	}
+}
+
+func parseSectionHeading(heading string) (int, string) {
+	trimmed := strings.TrimSpace(heading)
+	level := 0
+	for level < len(trimmed) && trimmed[level] == '#' {
+		level++
+	}
+	return level, strings.TrimSpace(strings.TrimLeft(trimmed, "#"))
+}
+
+func canonicalSectionTitle(title string) string {
+	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(title)), " "))
 }
 
 func constructRelations(meta *model.Metadata, path string) []model.Relationship {

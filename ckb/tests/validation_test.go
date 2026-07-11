@@ -130,6 +130,7 @@ func TestInvalidFixtures(t *testing.T) {
 		"orphan_evidence.md":            {model.CodeEvidenceOrphaned, model.SeverityWarning, ""},
 		"unsupported_schema_version.md": {model.CodeVersionUnsupported, model.SeverityError, "Schema Version"},
 		"prohibited_pii.md":             {model.CodePrivacyProhibitedPII, model.SeverityFatal, ""},
+		"missing_required_section.md":   {model.CodeSectionMissingRequired, model.SeverityFatal, ""},
 	}
 
 	rootFiles, err := parser.DiscoverFiles(filepath.Join(".."))
@@ -624,8 +625,62 @@ func ckbTestDoc(id string, typ model.ObjectType, optionalRows string, body strin
 		}
 	}
 	b.WriteString("\n---\n\n")
-	b.WriteString(body)
+	b.WriteString(withRequiredTestSections(typ, body))
 	return b.String()
+}
+
+func withRequiredTestSections(typ model.ObjectType, body string) string {
+	required := map[model.ObjectType][]string{
+		model.TypeProfile: {
+			"## 1. Professional Vision",
+			"## 2. Core Target Profile",
+			"## 3. Technology Alignment Priorities",
+			"## 4. Career Constraints & Non-Negotiables",
+		},
+		model.TypeTimeline: {
+			"## 1. Timeline Structure",
+			"## 2. Chronological Log",
+		},
+		model.TypeExperience: {
+			"## 1. Role Context",
+			"## 2. Key Achievements",
+		},
+		model.TypeProject: {
+			"## 1. Project Specifications",
+			"## 2. Architecture & Design Decisions",
+			"## 3. Implementation Details",
+			"## 4. Outcomes & Metrics",
+		},
+		model.TypeSkill: {
+			"## 1. Skill Matrix by Domain",
+		},
+		model.TypeAccomplishment: {
+			"## 1. Standalone Accomplishments",
+		},
+		model.TypeCredential: {
+			"## 1. Professional Certifications",
+			"## 2. Professional Training Log",
+		},
+		model.TypeContribution: {
+			"## 1. Speaking Engagements",
+			"## 2. Publications & Technical Writing",
+		},
+		model.TypeReference: {
+			"## 1. Professional Vouchers (Contact-Free)",
+		},
+		model.TypeEvidence: {
+			"## 1. Relational Evidence Catalog",
+		},
+		model.TypeEducation: {
+			"## 1. Academic Credentials",
+		},
+	}
+	for _, heading := range required[typ] {
+		if !strings.Contains(body, heading) {
+			body += "\n" + heading + "\n"
+		}
+	}
+	return body
 }
 
 func assertDiagnostic(t *testing.T, diagnostics []model.Diagnostic, code model.DiagnosticCode) {

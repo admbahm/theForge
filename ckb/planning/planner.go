@@ -198,11 +198,11 @@ func authorizeEvidenceReferences(kb *model.KnowledgeBase, policy claims.Policy, 
 		case evObj.Metadata.Verification == model.VerificationDisputed || evObj.Metadata.Verification == model.VerificationSuperseded:
 			diags = append(diags, evidenceAuthorizationDiagnostic(c, policy, "A referenced evidence object is not eligible for authorized provenance and was excluded from output."))
 			continue
-		case evObj.Metadata.Status == model.StatusDeprecated || evObj.Metadata.Status == model.StatusDraft:
+		case effectiveEvidenceStatus(evObj) != model.StatusActive:
 			diags = append(diags, evidenceAuthorizationDiagnostic(c, policy, "A referenced evidence object is not active and was excluded from output."))
 			continue
-		case evObj.Metadata.Lifecycle == model.LifecycleArchived:
-			diags = append(diags, evidenceAuthorizationDiagnostic(c, policy, "A referenced evidence object is archived and was excluded from output."))
+		case !evidenceLifecycleActive(effectiveEvidenceLifecycle(evObj)):
+			diags = append(diags, evidenceAuthorizationDiagnostic(c, policy, "A referenced evidence object has an inactive lifecycle and was excluded from output."))
 			continue
 		}
 	}
@@ -217,15 +217,32 @@ func authorizeEvidenceReferences(kb *model.KnowledgeBase, policy claims.Policy, 
 			claims.VerificationRank(evObj.Metadata.Verification) >= claims.VerificationRank(policy.MinVerification) &&
 			evObj.Metadata.Verification != model.VerificationDisputed &&
 			evObj.Metadata.Verification != model.VerificationSuperseded &&
-			evObj.Metadata.Status != model.StatusDeprecated &&
-			evObj.Metadata.Status != model.StatusDraft &&
-			evObj.Metadata.Lifecycle != model.LifecycleArchived {
+			effectiveEvidenceStatus(evObj) == model.StatusActive &&
+			evidenceLifecycleActive(effectiveEvidenceLifecycle(evObj)) {
 			authorized = append(authorized, evID)
 		}
 	}
 	sort.Strings(authorized)
 	c.EvidenceObjectIDs = authorized
 	return c, diags
+}
+
+func effectiveEvidenceStatus(obj *model.Object) model.Status {
+	if obj.Metadata.Status == "" {
+		return model.StatusActive
+	}
+	return obj.Metadata.Status
+}
+
+func effectiveEvidenceLifecycle(obj *model.Object) model.LifecycleState {
+	if obj.Metadata.Lifecycle == "" {
+		return model.LifecycleActive
+	}
+	return obj.Metadata.Lifecycle
+}
+
+func evidenceLifecycleActive(lifecycle model.LifecycleState) bool {
+	return lifecycle == model.LifecycleActive || lifecycle == model.LifecycleCompleted
 }
 
 func evidenceVisibilityAllowed(visibility model.Visibility, policy claims.Policy) bool {

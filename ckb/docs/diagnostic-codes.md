@@ -189,6 +189,14 @@ This document defines the stable, public diagnostic error codes emitted by the C
 *   **Remediation**: Check markdown syntax or timeout configuration.
 *   **Continue Parsing**: No.
 
+### 20A. `CKB-SECTION-MISSING-REQUIRED`
+*   **Severity**: `Fatal`
+*   **Category**: Structure
+*   **Meaning**: A document is missing a required section heading for its declared object type, or the required heading appears at the wrong level.
+*   **Common Cause**: Omitting a canonical heading such as `## 1. Role Context`, renaming it, or using the wrong heading level.
+*   **Remediation**: Add the required heading exactly as documented in the parser contract.
+*   **Continue Parsing**: No.
+
 ### 21. `CKB-PLAN-CONFLICT-DETECTED`
 *   **Severity**: `Error`
 *   **Category**: Planning

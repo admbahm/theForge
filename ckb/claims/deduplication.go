@@ -25,7 +25,15 @@ func DeduplicateClaims(claims []Claim) []Claim {
 		if cStatus != "Active" || (cLifecycle != "Active" && cLifecycle != "Completed") {
 			isActive = "inactive"
 		}
-		key := string(c.Kind) + "|" + isActive + "|" + strings.ToLower(strings.Join(strings.Fields(c.Statement), " "))
+		key := strings.Join([]string{
+			string(c.Kind),
+			isActive,
+			string(c.Visibility),
+			string(c.Verification),
+			cStatus,
+			cLifecycle,
+			strings.ToLower(strings.Join(strings.Fields(c.Statement), " ")),
+		}, "|")
 		grouped[key] = append(grouped[key], c)
 	}
 
