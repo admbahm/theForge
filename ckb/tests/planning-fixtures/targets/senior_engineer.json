@@ -1,0 +1,10 @@
+{
+  "target_role_title": "Lead Infrastructure Engineer",
+  "role_family": "Systems Engineering",
+  "desired_skills": ["Go", "Redis", "Docker", "Envoy"],
+  "desired_technologies": ["GCP", "Kubernetes"],
+  "desired_traits": ["Leadership", "Ownership"],
+  "desired_domain_knowledge": ["API Gateway", "SRE"],
+  "recency_preference_years": 3,
+  "keyword_priorities": ["high-throughput", "low-latency"]
+}
