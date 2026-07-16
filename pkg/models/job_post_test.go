@@ -125,3 +125,41 @@ Body text.
 		}
 	}
 }
+
+func TestUpdateStateOnly(t *testing.T) {
+	input := []byte(`---
+job_id: R123
+company: Stark Industries
+title: Arc Engineer
+state: apply
+custom_field: keep-me
+---
+
+# Title
+
+Body text.
+
+## The Forge Intelligence
+Old intelligence.
+`)
+
+	updated, err := UpdateStateOnly(input, "completed")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	text := string(updated)
+	expectedStrings := []string{
+		"state: completed",
+		"custom_field: keep-me",
+		"Body text.",
+		"## The Forge Intelligence",
+		"Old intelligence.",
+	}
+
+	for _, expected := range expectedStrings {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("updated note missing expected content %q:\n%s", expected, text)
+		}
+	}
+}

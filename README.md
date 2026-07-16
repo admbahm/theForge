@@ -199,7 +199,7 @@ go run ./cmd/theforge
 
 The `api_key_env` setting names the environment variable to read; it is not the key. For example, `api_key_env: MY_OPENAI_KEY` requires `export MY_OPENAI_KEY="..."`. Missing keys produce an error only when their provider is selected.
 
-OpenAI and Gemini currently have configuration and key-validation stubs only. After successful selection they return a clear error that HTTP generation is not implemented. Ollama is the only fully implemented provider and remains the default local mode with no paid API key required.
+OpenAI and Gemini are fully functional HTTP clients. Exporting the correct environment keys allows them to be used to perform job intelligence extraction and funnel synthesis. Ollama remains the default local provider and requires no paid API key.
 
 Before The Forge will process an incoming OpenHunt note, mark it as selected by adding this field inside its YAML frontmatter:
 
@@ -218,11 +218,89 @@ state: favorite
 ---
 ```
 
-Notes without `state: favorite` are intentionally ignored. This is the human approval gate that prevents every scraped posting from being sent to the configured provider. After successful intelligence generation, The Forge replaces the value with `state: intel-ready`.
+Notes without matching states are ignored. Changing the frontmatter of a job post triggers the following automated reactive transitions inside the watcher loop:
 
-The CLI loads optional `theforge.yaml` and `.env` files from the current working directory, applies exported environment variables as overrides, validates that the configured output path is a directory, performs the initial scan, and watches until interrupted with `Ctrl-C` or a termination signal.
+1. **Local Processor (`new` -> `processed`)**:
+   - Trigger: A job note with `state: new` (or empty with no favorite tag).
+   - Action: Extracts core signals and basic role information using local compute (Ollama).
+   - Result: Appends basic info and updates frontmatter state to `state: processed`.
+2. **Frontier Enricher (`favorite` -> `intel-ready`)**:
+   - Trigger: A job note with `state: favorite` (or favorited tag).
+   - Action: Performs deep intelligence enrichment (role signals, evidence needs, transferable positioning, gaps, and interview prep guides) using premium/frontier models.
+   - Result: Appends a `## The Forge Intelligence` section to the note body and updates state to `state: intel-ready`.
+3. **Application Anvil (`apply` -> `completed`)**:
+   - Trigger: A job note with `state: apply`.
+   - Action: Reads the Career Knowledge Base (CKB) files, scores/selects candidate claims, and compiles customized application materials (Resume and Cover Letter).
+   - Result: Outputs generated files to the vault's application directory and transitions state to `state: completed` (preserving existing intelligence section and custom fields).
 
-The current processor queues matching `favorite` jobs for the configured provider, appends a `The Forge Intelligence` section, and changes their state to `intel-ready`. Duplicate filesystem events for a queued or in-flight path are coalesced. The active prompt asks for role signals, evidence needs, transferable positioning, gaps, unsupported claims, candidate follow-up questions, and interview themes. Application artifact generation remains planned functionality and must use verified evidence maps before producing candidate-facing materials.
+---
+
+## Tailoring Application Materials (Phase 3)
+
+When you are ready to apply for a role, change the job posting's frontmatter to:
+
+```yaml
+state: apply
+```
+
+The running watcher (`theforge run`) will intercept this change and generate tailored materials.
+
+### Personalization Options
+
+You can supply your personal contact details using environment variables. These will be dynamically injected into the generated Resume and Cover Letter at compile-time:
+
+* `THEFORGE_CONTACT_NAME` (Defaults to "Tony Stark")
+* `THEFORGE_CONTACT_EMAIL`
+* `THEFORGE_CONTACT_PHONE`
+* `THEFORGE_CONTACT_ADDRESS`
+* `THEFORGE_CONTACT_LINKEDIN`
+* `THEFORGE_CONTACT_GITHUB`
+
+For example:
+```sh
+export THEFORGE_CONTACT_NAME="Adam Deane"
+export THEFORGE_CONTACT_EMAIL="adam@example.com"
+export THEFORGE_CONTACT_PHONE="555-0199"
+```
+
+### Overriding the Career Knowledge Base (CKB) Directory
+
+By default, the engine loads files from `./ckb` in the current working directory. You can specify a custom directory using the `THEFORGE_CKB_DIR` environment variable:
+
+```sh
+export THEFORGE_CKB_DIR="/path/to/your/ckb-vault"
+```
+
+### Output Location
+
+Tailored resumes (`resume.md`) and cover letters (`cover_letter.md`) are saved inside dedicated subfolders within your vault:
+```text
+<vault_path>/applications/<company>-<role>/
+```
+
+---
+
+## Career Knowledge Base (CKB) CLI Commands
+
+You can run diagnostics and query your Career Knowledge Base directly using the `ckb` subcommand group:
+
+### 1. Validate CKB
+Scan and report diagnostics (warnings and errors) for schema validation, evidence matching, and chronology gaps in your CKB directory:
+```sh
+go run ./cmd/theforge ckb validate --dir ./ckb
+```
+
+### 2. Export Graph
+Walk the CKB directory and output the resolved candidate experience/skills graph in deterministic sorted JSON format:
+```sh
+go run ./cmd/theforge ckb export --dir ./ckb
+```
+
+### 3. Plan Application
+Construct and print the deterministic `ArtifactPlan` (selected claims, matching technologies, and chronology warnings) for a job note against your CKB:
+```sh
+go run ./cmd/theforge ckb plan -job /path/to/job_post.md -dir ./ckb
+```
 
 ## Authors & Licensing
 

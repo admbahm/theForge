@@ -33,7 +33,7 @@ func ValidatePlan(req RenderRequest) []model.Diagnostic {
 	}
 
 	switch plan.ArtifactType {
-	case planning.TypeResume, planning.TypeCV, planning.TypeBiography, planning.TypeSTARStory, planning.TypeSkillsSummary:
+	case planning.TypeResume, planning.TypeCV, planning.TypeBiography, planning.TypeSTARStory, planning.TypeSkillsSummary, planning.TypeCoverLetter:
 		// Supported
 	default:
 		diags = append(diags, model.Diagnostic{

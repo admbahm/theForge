@@ -51,6 +51,8 @@ func Render(ctx context.Context, req RenderRequest) RenderResult {
 		}
 	case planning.TypeSkillsSummary:
 		sections, warnings = RenderSkillsSummary(req, plan.Policy)
+	case planning.TypeCoverLetter:
+		sections, warnings = RenderCoverLetter(req, plan.Policy)
 	default:
 		// CV default fallback
 		sections, warnings = RenderCV(req, plan.Policy)

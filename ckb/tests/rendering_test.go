@@ -1210,3 +1210,89 @@ func TestExpandedRenderersAndDiagnostics(t *testing.T) {
 		t.Errorf("Expected visibility violation error, got: %+v", resVis.Diagnostics)
 	}
 }
+
+func TestArtifactRendering_CoverLetter(t *testing.T) {
+	// 1. Setup mock KnowledgeBase
+	kb := model.NewKnowledgeBase()
+	obj1 := &model.Object{
+		ID:         "exp:stark-devops",
+		Type:       model.TypeExperience,
+		SourceFile: "/Users/example/dev/example-project/ckb/experience/stark-devops.md",
+		Metadata: model.Metadata{
+			Visibility:   model.VisibilityPublic,
+			Verification: model.VerificationIndependentlyVerified,
+			Source:       "Stark Industries",
+			Confidence:   0.90,
+		},
+		Sections: []model.Section{
+			{
+				Heading: "Role Context",
+				Body:    "Organization: Stark Industries\nRole: Principal DevOps Architect\nDuration: 2025-06 - 2026-06\nLocation: Remote",
+			},
+			{
+				Heading: "Achievements",
+				Body:    "- Cost Reduction: Saved $1.2M in annual cloud spend.",
+			},
+		},
+	}
+	kb.Objects[obj1.ID] = obj1
+
+	// Build plan
+	req := planning.PlanRequest{
+		ArtifactType: planning.TypeCoverLetter,
+		PolicyID:     "StrictPublic",
+		Target: &planning.TargetProfile{
+			RoleTitle: "Principal DevOps Architect",
+		},
+	}
+	planRes := planning.BuildPlan(context.Background(), kb, req)
+	if planRes.Plan == nil {
+		t.Fatalf("Plan construction failed: %+v", planRes.Diagnostics)
+	}
+
+	// 2. Render Cover Letter
+	renderReq := rendering.RenderRequest{
+		Plan: planRes.Plan,
+		Options: rendering.RenderOptions{
+			Contact: rendering.ContactInfo{
+				Name:    "Tony Stark",
+				Email:   "tony@stark.com",
+				Address: "Malibu, CA",
+				Phone:   "123-456-7890",
+			},
+		},
+	}
+
+	res := rendering.Render(context.Background(), renderReq)
+	if len(res.Diagnostics) > 0 {
+		for _, d := range res.Diagnostics {
+			if d.Severity == model.SeverityFatal {
+				t.Fatalf("Fatal rendering diagnostic: %s", d.Message)
+			}
+		}
+	}
+
+	art := res.Artifact
+	if art == nil {
+		t.Fatalf("Artifact rendering returned nil artifact")
+	}
+
+	if art.Title != "Tony Stark" {
+		t.Errorf("Expected title 'Tony Stark', got %q", art.Title)
+	}
+
+	// Export Markdown
+	var mdBuf bytes.Buffer
+	err := export.ExportMarkdown(art, &mdBuf, export.MarkdownOptions{IncludeHeadings: true})
+	if err != nil {
+		t.Fatalf("Markdown export failed: %v", err)
+	}
+	mdStr := mdBuf.String()
+
+	if !strings.Contains(mdStr, "Dear Hiring Manager at Stark Industries,") {
+		t.Errorf("Expected Markdown to contain salutation, got:\n%s", mdStr)
+	}
+	if !strings.Contains(mdStr, "Cost Reduction: Saved $1.2M in annual cloud spend.") {
+		t.Errorf("Expected Markdown to contain accomplishment, got:\n%s", mdStr)
+	}
+}

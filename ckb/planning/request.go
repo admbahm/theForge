@@ -11,11 +11,13 @@ const (
 	TypeBiography     ArtifactType = "ProfessionalBiography"
 	TypeSTARStory     ArtifactType = "STARStory"
 	TypeSkillsSummary ArtifactType = "SkillsSummary"
+	TypeCoverLetter   ArtifactType = "CoverLetter"
 )
 
 // TargetProfile defines matching criteria representing the target job description.
 type TargetProfile struct {
 	RoleTitle              string   `json:"target_role_title,omitempty"`
+	Company                string   `json:"company,omitempty"`
 	RoleFamily             string   `json:"role_family,omitempty"`
 	DesiredSkills          []string `json:"desired_skills,omitempty"`
 	DesiredTechnologies    []string `json:"desired_technologies,omitempty"`
