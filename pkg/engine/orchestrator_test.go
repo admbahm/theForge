@@ -364,3 +364,129 @@ func waitFor(t *testing.T, condition func() bool) {
 	}
 	t.Fatal("condition was not met before timeout")
 }
+
+func TestOrchestrator_ProcessApply(t *testing.T) {
+	// Create mock CKB directory
+	ckbDir := t.TempDir()
+	expDir := filepath.Join(ckbDir, "experience")
+	if err := os.MkdirAll(expDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	mockExp := `| Metadata | Value |
+| :--- | :--- |
+| **Schema Version** | 1.0 |
+| **ID** | exp:stark-devops |
+| **Type** | Experience |
+| **Status** | Active |
+| **Verification Level** | Independently-Verified |
+| **Confidence** | 0.95 |
+| **Visibility** | Public |
+| **Source** | Stark Industries |
+| **Last Updated** | 2026-07-16 |
+| **Lifecycle State** | Completed |
+
+---
+
+## 1. Role Context
+* **Role**: Principal DevOps Architect
+* **Duration**: 2025-06 – 2026-06
+* **Location**: Remote
+
+## 2. Key Achievements
+- Cost Reduction: Saved $1.2M in annual cloud spend.
+`
+	if err := os.WriteFile(filepath.Join(expDir, "stark-devops.md"), []byte(mockExp), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Set ckb dir environment variable
+	t.Setenv("THEFORGE_CKB_DIR", ckbDir)
+	t.Setenv("THEFORGE_CONTACT_NAME", "Tony Stark")
+	t.Setenv("THEFORGE_CONTACT_EMAIL", "tony@stark.com")
+
+	// Create temporary vault
+	vault := t.TempDir()
+	path := filepath.Join(vault, "job.md")
+	input := `---
+job_id: R123
+company: Stark Industries
+title: Principal DevOps Architect
+state: apply
+custom_field: preserved
+---
+
+# Principal DevOps Architect
+
+Requirements:
+- Kubernetes
+- Cloud architecture
+
+## The Forge Intelligence
+Existing intelligence.
+`
+	if err := os.WriteFile(path, []byte(input), 0640); err != nil {
+		t.Fatal(err)
+	}
+
+	generator := &fakeIntelGenerator{}
+	orchestrator, err := NewOrchestrator(vault, generator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer orchestrator.Stop()
+
+	if err := orchestrator.Start(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for transition to completed state
+	waitFor(t, func() bool {
+		updated, err := os.ReadFile(path)
+		return err == nil && strings.Contains(string(updated), "state: completed")
+	})
+
+	// Verify job note updates
+	updated, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(updated)
+	if !strings.Contains(text, "custom_field: preserved") {
+		t.Error("Expected custom_field: preserved to be preserved")
+	}
+	if !strings.Contains(text, "Existing intelligence.") {
+		t.Error("Expected existing intelligence section to be preserved")
+	}
+
+	// Verify generated artifacts in vault applications folder
+	appDir := filepath.Join(vault, "applications", "stark_industries-principal_devops_architect")
+	resumePath := filepath.Join(appDir, "resume.md")
+	clPath := filepath.Join(appDir, "cover_letter.md")
+
+	if _, err := os.Stat(resumePath); os.IsNotExist(err) {
+		t.Fatal("Resume artifact was not generated")
+	}
+	if _, err := os.Stat(clPath); os.IsNotExist(err) {
+		t.Fatal("Cover letter artifact was not generated")
+	}
+
+	resumeData, err := os.ReadFile(resumePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(resumeData), "# Tony Stark") {
+		t.Errorf("Resume missing name, got:\n%s", string(resumeData))
+	}
+
+	clData, err := os.ReadFile(clPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(clData), "Dear Hiring Manager at Stark Industries,") {
+		t.Errorf("Cover letter missing salutation, got:\n%s", string(clData))
+	}
+	if !strings.Contains(string(clData), "Saved $1.2M in annual cloud spend.") {
+		t.Errorf("Cover letter missing accomplishment, got:\n%s", string(clData))
+	}
+}

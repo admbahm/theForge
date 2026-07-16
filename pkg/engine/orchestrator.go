@@ -9,6 +9,11 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/admbahm/theForge/ckb/export"
+	"github.com/admbahm/theForge/ckb/model"
+	"github.com/admbahm/theForge/ckb/parser"
+	"github.com/admbahm/theForge/ckb/planning"
+	"github.com/admbahm/theForge/ckb/rendering"
 	"github.com/admbahm/theForge/pkg/models"
 	"github.com/fsnotify/fsnotify"
 )
@@ -204,6 +209,7 @@ func (o *Orchestrator) clearPending(path string) {
 }
 
 func (o *Orchestrator) handleFile(path string) {
+	fileName := filepath.Base(path)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		log.Printf("[Error] Failed to read job post file %s: %v", path, err)
@@ -215,6 +221,25 @@ func (o *Orchestrator) handleFile(path string) {
 		return
 	}
 	if job.Company == "" {
+		return
+	}
+
+	if job.State == "apply" {
+		log.Printf("[Processing] [%s] %s - %s: Processing application artifacts...", fileName, job.Company, job.Title)
+		if err := o.processApply(path, job); err != nil {
+			log.Printf("[Error] [%s] %s - %s: Application generation failed: %v", fileName, job.Company, job.Title, err)
+			return
+		}
+		updatedData, err := models.UpdateStateOnly(data, "completed")
+		if err != nil {
+			log.Printf("[Error] [%s] %s - %s: Failed to update note state: %v", fileName, job.Company, job.Title, err)
+			return
+		}
+		if err := atomicWrite(path, updatedData); err != nil {
+			log.Printf("[Error] [%s] %s - %s: Failed to save changes: %v", fileName, job.Company, job.Title, err)
+			return
+		}
+		log.Printf("[Success] [%s] %s - %s: Finished application generation (Status: completed)", fileName, job.Company, job.Title)
 		return
 	}
 
@@ -251,7 +276,6 @@ func (o *Orchestrator) handleFile(path string) {
 		return
 	}
 
-	fileName := filepath.Base(path)
 	log.Printf("[Processing] [%s] %s - %s: Generating %s intelligence...", fileName, job.Company, job.Title, processingTier)
 	runCtx := context.WithValue(o.ctx, "tier", processingTier)
 
@@ -280,6 +304,127 @@ func (o *Orchestrator) handleFile(path string) {
 		return
 	}
 	log.Printf("[Success] [%s] %s - %s: Finished intelligence (Status: %s)", fileName, job.Company, job.Title, targetState)
+}
+
+func (o *Orchestrator) processApply(path string, job models.JobPost) error {
+	ckbPath := "./ckb"
+	if envCkb := os.Getenv("THEFORGE_CKB_DIR"); envCkb != "" {
+		ckbPath = envCkb
+	}
+
+	opts := parser.ParseOptions{
+		Strict:          true,
+		ValidatePrivacy: true,
+		Limits:          parser.DefaultLimits(),
+	}
+
+	ckbRes := parser.ParseDirectory(o.ctx, ckbPath, opts)
+
+	hasErrors := false
+	for _, diag := range ckbRes.Diagnostics {
+		if diag.Severity == model.SeverityError || diag.Severity == model.SeverityFatal {
+			log.Printf("[Error] CKB diagnostic error: %s (File: %s)", diag.Message, diag.Source.FilePath)
+			hasErrors = true
+		}
+	}
+	if hasErrors {
+		return fmt.Errorf("CKB contains validation errors")
+	}
+
+	target := &planning.TargetProfile{
+		RoleTitle:           job.Title,
+		Company:             job.Company,
+		DesiredTechnologies: job.TechStack,
+	}
+
+	resumeReq := planning.PlanRequest{
+		ArtifactType: planning.TypeResume,
+		PolicyID:     "StrictPublic",
+		Target:       target,
+	}
+	resumePlanRes := planning.BuildPlan(o.ctx, ckbRes.KnowledgeBase, resumeReq)
+	if resumePlanRes.Plan == nil {
+		return fmt.Errorf("resume plan construction failed")
+	}
+
+	clReq := planning.PlanRequest{
+		ArtifactType: planning.TypeCoverLetter,
+		PolicyID:     "StrictPublic",
+		Target:       target,
+	}
+	clPlanRes := planning.BuildPlan(o.ctx, ckbRes.KnowledgeBase, clReq)
+	if clPlanRes.Plan == nil {
+		return fmt.Errorf("cover letter plan construction failed")
+	}
+
+	contact := rendering.ContactInfo{
+		Name:        os.Getenv("THEFORGE_CONTACT_NAME"),
+		Email:       os.Getenv("THEFORGE_CONTACT_EMAIL"),
+		Phone:       os.Getenv("THEFORGE_CONTACT_PHONE"),
+		Address:     os.Getenv("THEFORGE_CONTACT_ADDRESS"),
+		LinkedInURL: os.Getenv("THEFORGE_CONTACT_LINKEDIN"),
+		GitHubURL:   os.Getenv("THEFORGE_CONTACT_GITHUB"),
+	}
+	if contact.Name == "" {
+		contact.Name = "Tony Stark"
+	}
+
+	resumeRenderReq := rendering.RenderRequest{
+		Plan:    resumePlanRes.Plan,
+		Options: rendering.RenderOptions{Contact: contact},
+	}
+	resumeRenderRes := rendering.Render(o.ctx, resumeRenderReq)
+	if resumeRenderRes.Artifact == nil {
+		return fmt.Errorf("resume rendering failed")
+	}
+
+	clRenderReq := rendering.RenderRequest{
+		Plan:    clPlanRes.Plan,
+		Options: rendering.RenderOptions{Contact: contact},
+	}
+	clRenderRes := rendering.Render(o.ctx, clRenderReq)
+	if clRenderRes.Artifact == nil {
+		return fmt.Errorf("cover letter rendering failed")
+	}
+
+	companySanitized := sanitizePathSegment(job.Company)
+	titleSanitized := sanitizePathSegment(job.Title)
+	appDir := filepath.Join(o.vaultPath, "applications", fmt.Sprintf("%s-%s", companySanitized, titleSanitized))
+	if err := os.MkdirAll(appDir, 0755); err != nil {
+		return fmt.Errorf("failed to create application dir: %w", err)
+	}
+
+	resumePath := filepath.Join(appDir, "resume.md")
+	resumeFile, err := os.Create(resumePath)
+	if err != nil {
+		return fmt.Errorf("failed to create resume file: %w", err)
+	}
+	defer resumeFile.Close()
+
+	if err := export.ExportMarkdown(resumeRenderRes.Artifact, resumeFile, export.MarkdownOptions{IncludeHeadings: true}); err != nil {
+		return fmt.Errorf("failed to export resume markdown: %w", err)
+	}
+
+	clPath := filepath.Join(appDir, "cover_letter.md")
+	clFile, err := os.Create(clPath)
+	if err != nil {
+		return fmt.Errorf("failed to create cover letter file: %w", err)
+	}
+	defer clFile.Close()
+
+	if err := export.ExportMarkdown(clRenderRes.Artifact, clFile, export.MarkdownOptions{IncludeHeadings: true}); err != nil {
+		return fmt.Errorf("failed to export cover letter markdown: %w", err)
+	}
+
+	log.Printf("[Success] Tailored application materials generated at %s", appDir)
+	return nil
+}
+
+func sanitizePathSegment(s string) string {
+	s = strings.ReplaceAll(s, " ", "_")
+	s = strings.ReplaceAll(s, "/", "-")
+	s = strings.ReplaceAll(s, "\\", "-")
+	return strings.ToLower(s)
 }
 
 func atomicWrite(path string, data []byte) error {

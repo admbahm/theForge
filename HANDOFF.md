@@ -4,29 +4,22 @@ This document records the current state of the repository, completed objectives,
 
 ## 1. Branch & Git Status
 * **Active Branch**: `feat/phase3-integration`
-* **Working Tree**: Clean.
+* **Working Tree**: Staged for commit (all changes are tracked, and there are no untracked modifications in the working tree).
 
 ## 2. Active Goal & Objectives
-* **Active Goal**: Implement Phase 3 (Pipeline & Artifact Integration) to automate evidence-grounded resume, CV, and cover letter generation inside the fsnotify watcher pipeline.
-* **Scope**: 
-  1. Extend `JobPost` state transitions to include `state: apply` and `state: completed`.
-  2. Modify the `Orchestrator` watcher event loop to intercept `state: apply`.
-  3. Load the CKB and run the planning and rendering logic when `state: apply` is detected.
-  4. Write generated artifacts (tailored resumes, cover letters) to a dedicated application directory.
-  5. Atomically advance the job post's state to `completed`.
-  6. Implement the deterministic Cover Letter generation module.
+* **Active Goal**: Complete Phase 3 implementation, including deterministic Cover Letter compilation, state-preserving updates, and fsnotify watcher pipeline execution for job postings in `state: apply`.
 
 ## 3. Work Completed
-* **Pre-Phase 3 Milestones Merged**: Pre-Phase 3 (OpenAI/Gemini HTTP clients, prompt refactorings, and `ckb` CLI validate/export/plan commands) has been successfully merged into `main` (PR #15).
-* **Workspace Configuration**: Added Git Flow & Branching rules and Agent Session Handoff Discipline to [.agents/AGENTS.md](file:///Users/adam/dev/cross/TheForge/.agents/AGENTS.md).
-* **Branching**: Branch `feat/phase3-integration` has been checked out as the active working branch.
+* **Cover Letter Renderer**: Implemented `ckb/rendering/cover_letter.go` to construct structured templates using selected candidate accomplishments and contact info.
+* **Target Schema Extension**: Added `Company` to `TargetProfile` and `TypeCoverLetter` to `ArtifactType` to support cover letters in planning and rendering.
+* **State Updates**: Created `UpdateStateOnly` in `pkg/models/job_post.go` to support in-place frontmatter transitions without stripping existing note intelligence blocks.
+* **Watcher Pipeline**: Extended `handleFile` in `pkg/engine/orchestrator.go` to watch for `state: apply` events, load the CKB database graph, generate planning/rendering results, write output materials to the applications folder, and atomically advance the note's status to `completed`.
+* **Testing & Verification**:
+  - Added unit test cases for the Cover Letter (`rendering_test.go`) and state-updating functions (`job_post_test.go`).
+  - Implemented a complete integration test `TestOrchestrator_ProcessApply` in `orchestrator_test.go` confirming the entire fsnotify-to-compiled-artifacts pipeline functions correctly.
+  - Formatted files with `gofmt` and verified that both `go test ./...` and `go vet ./...` run cleanly with zero warnings or failures.
 
-## 4. Immediate Next Steps
-1. **Extend JobPost Model**: Add states `apply` and `completed` to job post logic.
-2. **Update fsnotify Orchestrator**: Update `pkg/engine/orchestrator.go` to support loading the CKB, running `planning.BuildPlan` and `rendering.Render` for `state: apply` postings.
-3. **Design Cover Letter Renderer**: Build a Cover Letter generation compiler inside `ckb/rendering/`.
-4. **Define Directory Exporter**: Output all generated application materials into `<vault_path>/applications/<company>-<role>/`.
-
-## 5. Pending Open Questions & Blockers
-* **Cover Letter Template format**: Do we want to support Markdown/LaTeX formats for cover letters, similar to resumes?
-* **Application Folder Structure**: Does outputting packages to `<vault_path>/applications/<company>-<role>/` align with your Obsidian setup?
+## 4. Immediate Next Steps (Planned Capabilities)
+1. **Evidence Mapping**: Design deep-semantic claim mapping options that align verified candidate credentials/evidence to complex, specific requirement keywords.
+2. **Additional Export Formats**: Support LaTeX rendering pipelines for cover letters and resumes.
+3. **Advanced AI Tailoring**: Implement the `-provider` flag inside the watcher pipeline to support optional "last mile" LLM refining passes using OpenAI, Gemini, or Ollama.

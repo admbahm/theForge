@@ -170,3 +170,49 @@ func splitMarkdown(data []byte) ([]byte, []byte, error) {
 
 	return normalized[4:end], normalized[bodyStart:], nil
 }
+
+// UpdateStateOnly updates only the state field in YAML frontmatter, preserving the entire body.
+func UpdateStateOnly(data []byte, state string) ([]byte, error) {
+	frontmatter, body, err := splitMarkdown(data)
+	if err != nil {
+		return nil, err
+	}
+
+	var document yaml.Node
+	if err := yaml.Unmarshal(frontmatter, &document); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal frontmatter: %w", err)
+	}
+	if len(document.Content) != 1 || document.Content[0].Kind != yaml.MappingNode {
+		return nil, fmt.Errorf("frontmatter must be a YAML mapping")
+	}
+
+	mapping := document.Content[0]
+	stateUpdated := false
+	for index := 0; index+1 < len(mapping.Content); index += 2 {
+		if mapping.Content[index].Value == "state" {
+			mapping.Content[index+1].Kind = yaml.ScalarNode
+			mapping.Content[index+1].Tag = "!!str"
+			mapping.Content[index+1].Value = state
+			stateUpdated = true
+			break
+		}
+	}
+	if !stateUpdated {
+		mapping.Content = append(mapping.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "state"},
+			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: state},
+		)
+	}
+
+	updatedFrontmatter, err := yaml.Marshal(&document)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal frontmatter: %w", err)
+	}
+
+	var result strings.Builder
+	result.WriteString("---\n")
+	result.Write(updatedFrontmatter)
+	result.WriteString("---\n")
+	result.Write(body)
+	return []byte(result.String()), nil
+}
