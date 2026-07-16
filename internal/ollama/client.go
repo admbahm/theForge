@@ -97,7 +97,7 @@ func (c *Client) GenerateIntel(ctx context.Context, job models.JobPost) (string,
 
 	requestBody := generateRequest{
 		Model:  c.model,
-		Prompt: buildPrompt(ctx, job),
+		Prompt: BuildPrompt(ctx, job),
 		Stream: false,
 		Options: map[string]any{
 			"temperature": 0.2,
@@ -204,18 +204,18 @@ func (c *Client) recordFailure() {
 	}
 }
 
-func buildPrompt(ctx context.Context, job models.JobPost) string {
+func BuildPrompt(ctx context.Context, job models.JobPost) string {
 	if job.Content == "" {
-		return buildMissingDescriptionPrompt(job)
+		return BuildMissingDescriptionPrompt(job)
 	}
 	tier, _ := ctx.Value("tier").(string)
 	if tier == "local" {
-		return buildLocalPrompt(job)
+		return BuildLocalPrompt(job)
 	}
-	return buildFrontierPrompt(job)
+	return BuildFrontierPrompt(job)
 }
 
-func buildMissingDescriptionPrompt(job models.JobPost) string {
+func BuildMissingDescriptionPrompt(job models.JobPost) string {
 	return fmt.Sprintf(`You are producing career intelligence for an ethical, evidence-based AI-assisted job application workflow.
 
 CRITICAL: The job description was unavailable. This analysis is based primarily on company/domain inference because the job description was unavailable.
@@ -241,7 +241,7 @@ Title: %s
 Location: %s`, job.Company, job.Title, job.Location)
 }
 
-func buildLocalPrompt(job models.JobPost) string {
+func BuildLocalPrompt(job models.JobPost) string {
 	return fmt.Sprintf(`You are producing local baseline career intelligence for an ethical, evidence-based AI-assisted job application workflow.
 
 Extract the core signals from the job posting below. Keep it concise, structured, and focused. Do not invent details.
@@ -261,7 +261,7 @@ Posting:
 %s`, job.Company, job.Title, job.Location, job.PostedAt, job.Content)
 }
 
-func buildFrontierPrompt(job models.JobPost) string {
+func BuildFrontierPrompt(job models.JobPost) string {
 	return fmt.Sprintf(`You are producing career intelligence for an ethical, evidence-based AI-assisted job application workflow.
 
 The Forge is not a generic resume generator. Its core rule is strict evidence discipline:

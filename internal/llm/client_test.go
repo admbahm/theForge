@@ -31,7 +31,7 @@ func TestNewClientRequiresKeyOnlyForSelectedProvider(t *testing.T) {
 	}
 }
 
-func TestNewClientCreatesConfiguredProviderStub(t *testing.T) {
+func TestNewClientCreatesConfiguredProvider(t *testing.T) {
 	t.Setenv("CUSTOM_GEMINI_KEY", "test-key")
 	cfg := config.Config{
 		LLM: config.LLMConfig{Provider: "gemini", Model: "custom-model"},
@@ -45,8 +45,8 @@ func TestNewClientCreatesConfiguredProviderStub(t *testing.T) {
 		t.Fatalf("NewClient() error = %v", err)
 	}
 	_, err = client.GenerateIntel(context.Background(), models.JobPost{})
-	if err == nil || !strings.Contains(err.Error(), "gemini provider") || !strings.Contains(err.Error(), "custom-model") {
-		t.Fatalf("GenerateIntel() error = %v, want useful stub error", err)
+	if err == nil || !strings.Contains(err.Error(), "gemini error") {
+		t.Fatalf("GenerateIntel() error = %v, want invalid API key error", err)
 	}
 }
 

@@ -148,12 +148,24 @@ func NewClient(cfg config.Config) (Client, error) {
 	case "ollama":
 		frontierClient = localClient
 	case "openai":
-		frontierClient, err = newStubClient("openai", firstConfigured(cfg.LLM.Model, cfg.Providers.OpenAI.Model, config.DefaultOpenAIModel), firstConfigured(cfg.Providers.OpenAI.APIKeyEnv, config.DefaultOpenAIKeyEnv))
+		apiKeyEnv := firstConfigured(cfg.Providers.OpenAI.APIKeyEnv, config.DefaultOpenAIKeyEnv)
+		apiKey := os.Getenv(apiKeyEnv)
+		if strings.TrimSpace(apiKey) == "" {
+			return nil, fmt.Errorf("openai provider requires an API key in environment variable %s", apiKeyEnv)
+		}
+		model := firstConfigured(cfg.LLM.Model, cfg.Providers.OpenAI.Model, config.DefaultOpenAIModel)
+		frontierClient, err = newOpenAIClient(apiKey, model)
 		if err != nil {
 			return nil, err
 		}
 	case "gemini":
-		frontierClient, err = newStubClient("gemini", firstConfigured(cfg.LLM.Model, cfg.Providers.Gemini.Model, config.DefaultGeminiModel), firstConfigured(cfg.Providers.Gemini.APIKeyEnv, config.DefaultGeminiKeyEnv))
+		apiKeyEnv := firstConfigured(cfg.Providers.Gemini.APIKeyEnv, config.DefaultGeminiKeyEnv)
+		apiKey := os.Getenv(apiKeyEnv)
+		if strings.TrimSpace(apiKey) == "" {
+			return nil, fmt.Errorf("gemini provider requires an API key in environment variable %s", apiKeyEnv)
+		}
+		model := firstConfigured(cfg.LLM.Model, cfg.Providers.Gemini.Model, config.DefaultGeminiModel)
+		frontierClient, err = newGeminiClient(apiKey, model)
 		if err != nil {
 			return nil, err
 		}
@@ -193,19 +205,3 @@ func firstConfigured(values ...string) string {
 	return ""
 }
 
-type stubClient struct {
-	provider string
-	model    string
-}
-
-func newStubClient(provider, model, apiKeyEnv string) (Client, error) {
-	if strings.TrimSpace(os.Getenv(apiKeyEnv)) == "" {
-		return nil, fmt.Errorf("%s provider requires an API key in environment variable %s", provider, apiKeyEnv)
-	}
-	return &stubClient{provider: provider, model: model}, nil
-}
-
-func (c *stubClient) GenerateIntel(context.Context, models.JobPost) (string, error) {
-	// TODO: Implement the provider HTTP API without changing the Client contract.
-	return "", fmt.Errorf("%s provider is configured with model %q but generation is not implemented yet", c.provider, c.model)
-}

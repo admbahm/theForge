@@ -65,3 +65,17 @@ For filesystem behavior, use temporary directories and verify both resulting con
 - Keep documentation aligned with actual behavior and repository structure.
 - Avoid committing generated job data, private vault content, local configuration, credentials, IDE state, binaries, coverage output, or temporary files.
 - Do not modify unrelated user changes in the working tree.
+
+## Agent Session Handoff Discipline
+
+To guarantee continuity across distinct agent sessions or when approaching message/token limits:
+- The agent **must** create or update a `HANDOFF.md` file in the repository root.
+- The `HANDOFF.md` file must serve as a living state map of the codebase and execution progress.
+- The `HANDOFF.md` must include:
+  1. **Current Active Branch & Git Status**: Branch name, list of modified/staged/untracked files.
+  2. **Active Goal & Objectives**: The high-level intent of the current session.
+  3. **Work Completed**: Granular list of tasks resolved in the current session.
+  4. **Immediate Next Steps**: Clear, actionable directions for the next agent to continue without losing context.
+  5. **Pending Open Questions/Blockers**: Technical decisions, gaps in information, or blockers.
+- Before ending a session (either successfully or due to limits), the agent must perform a validation check (`go test ./...`) and write the final state to `HANDOFF.md`.
+
