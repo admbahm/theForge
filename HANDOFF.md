@@ -3,30 +3,29 @@
 This document records the current state of the repository, completed objectives, and next steps for subsequent agent sessions.
 
 ## 1. Branch & Git Status
-* **Active Branch**: `feat/ckb-pipeline-integration`
+* **Active Branch**: `feat/phase3-integration`
 * **Working Tree**: Clean.
 
 ## 2. Active Goal & Objectives
-* **Active Goal**: Complete Pre-Phase 3 implementation to support API solidity and CLI subcommands, and prepare for Phase 3 (Pipeline & Artifact Integration).
+* **Active Goal**: Implement Phase 3 (Pipeline & Artifact Integration) to automate evidence-grounded resume, CV, and cover letter generation inside the fsnotify watcher pipeline.
 * **Scope**: 
-  1. Mandate Handoff Discipline in `.agents/AGENTS.md` (Completed).
-  2. Implement functional HTTP clients for OpenAI and Gemini to support frontier LLM synthesis (Completed).
-  3. Export prompt builder helpers from the `ollama` package to unify prompting behavior across all providers (Completed).
-  4. Create `ckb` subcommand group (`validate`, `export`, `plan`) in `cmd/theforge/main.go` to expose CKB operations to the CLI (Completed).
-  5. Expand test suites and execute full verification checks (Completed).
+  1. Extend `JobPost` state transitions to include `state: apply` and `state: completed`.
+  2. Modify the `Orchestrator` watcher event loop to intercept `state: apply`.
+  3. Load the CKB and run the planning and rendering logic when `state: apply` is detected.
+  4. Write generated artifacts (tailored resumes, cover letters) to a dedicated application directory.
+  5. Atomically advance the job post's state to `completed`.
+  6. Implement the deterministic Cover Letter generation module.
 
 ## 3. Work Completed
-* **Workspace Configuration**: Added `Agent Session Handoff Discipline` to [.agents/AGENTS.md](file:///Users/adam/dev/cross/TheForge/.agents/AGENTS.md) to mandate maintaining `HANDOFF.md`.
-* **Subcommand CLI Implementations**: Integrated the `ckb` CLI group directly inside [main.go](file:///Users/adam/dev/cross/TheForge/cmd/theforge/main.go). Commands include `theforge ckb validate`, `theforge ckb export`, and `theforge ckb plan`.
-* **API Providers**: Replaced stubs in [client.go](file:///Users/adam/dev/cross/TheForge/internal/llm/client.go) with fully functional HTTP implementations for OpenAI ([openai_client.go](file:///Users/adam/dev/cross/TheForge/internal/llm/openai_client.go)) and Gemini ([gemini_client.go](file:///Users/adam/dev/cross/TheForge/internal/llm/gemini_client.go)).
-* **Shared Prompts**: Exported prompt functions in [client.go](file:///Users/adam/dev/cross/TheForge/internal/ollama/client.go) to `BuildPrompt`, `BuildFrontierPrompt`, `BuildLocalPrompt`, and `BuildMissingDescriptionPrompt`.
-* **Test Verification**: Added [openai_client_test.go](file:///Users/adam/dev/cross/TheForge/internal/llm/openai_client_test.go) and [gemini_client_test.go](file:///Users/adam/dev/cross/TheForge/internal/llm/gemini_client_test.go) mock transport tests. All workspace tests run and pass successfully (`go test ./...` returns `ok`).
+* **Pre-Phase 3 Milestones Merged**: Pre-Phase 3 (OpenAI/Gemini HTTP clients, prompt refactorings, and `ckb` CLI validate/export/plan commands) has been successfully merged into `main` (PR #15).
+* **Workspace Configuration**: Added Git Flow & Branching rules and Agent Session Handoff Discipline to [.agents/AGENTS.md](file:///Users/adam/dev/cross/TheForge/.agents/AGENTS.md).
+* **Branching**: Branch `feat/phase3-integration` has been checked out as the active working branch.
 
-## 4. Immediate Next Steps (Phase 3 Execution)
-1. **Extend Watcher Pipeline**: Integrate the CKB planning and rendering logic inside the `Orchestrator` watcher in [orchestrator.go](file:///Users/adam/dev/cross/TheForge/pkg/engine/orchestrator.go) to process jobs entering `state: apply`.
-2. **Handle State Transition**: Watching for `state: apply` should trigger `ckb/planning.BuildPlan` and compile tailored resumes using renderers in `ckb/rendering/`.
-3. **Application Packet Exporter**: Output the resulting artifact plan and rendered resumes (LaTeX/Markdown/Text) to a dedicated application folder (e.g. `<vault_path>/applications/<company>-<role>/`).
-4. **Draft Cover Letter Module**: Implement a cover letter rendering logic in `ckb/rendering/` to compile tailored cover letters.
+## 4. Immediate Next Steps
+1. **Extend JobPost Model**: Add states `apply` and `completed` to job post logic.
+2. **Update fsnotify Orchestrator**: Update `pkg/engine/orchestrator.go` to support loading the CKB, running `planning.BuildPlan` and `rendering.Render` for `state: apply` postings.
+3. **Design Cover Letter Renderer**: Build a Cover Letter generation compiler inside `ckb/rendering/`.
+4. **Define Directory Exporter**: Output all generated application materials into `<vault_path>/applications/<company>-<role>/`.
 
 ## 5. Pending Open Questions & Blockers
 * **Cover Letter Template format**: Do we want to support Markdown/LaTeX formats for cover letters, similar to resumes?
