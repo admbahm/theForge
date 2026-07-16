@@ -62,6 +62,7 @@ For filesystem behavior, use temporary directories and verify both resulting con
 
 ## Change Discipline
 
+- **Git Flow & Branching**: Never commit or push directly to `main`. Always create a descriptive feature, task, or bugfix branch (e.g., `feat/...`, `task/...`, `fix/...`) for all development work, and push that branch to the remote.
 - Keep documentation aligned with actual behavior and repository structure.
 - Avoid committing generated job data, private vault content, local configuration, credentials, IDE state, binaries, coverage output, or temporary files.
 - Do not modify unrelated user changes in the working tree.
