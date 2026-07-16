@@ -3,8 +3,8 @@
 This document records the current state of the repository, completed objectives, and next steps for subsequent agent sessions.
 
 ## 1. Branch & Git Status
-* **Active Branch**: `main`
-* **Working Tree**: Clean (all changes are tracked, and there are no untracked modifications in the working tree).
+* **Active Branch**: `feat/ckb-pipeline-integration`
+* **Working Tree**: Clean.
 
 ## 2. Active Goal & Objectives
 * **Active Goal**: Complete Pre-Phase 3 implementation to support API solidity and CLI subcommands, and prepare for Phase 3 (Pipeline & Artifact Integration).
