@@ -14,7 +14,9 @@
 
 ## Project Overview
 
-The Forge monitors your Obsidian vault for job postings ingested by "OpenHunt". It tracks the lifecycle of each selected application through frontmatter metadata, triggering an LLM provider to generate job intelligence and, in planned phases, traceable evidence maps and targeted application artifacts. **Ollama** running **Gemma 4** remains the default local provider, so the normal workflow requires no paid API key.
+The Forge monitors your Obsidian vault for job postings ingested by "OpenHunt". It tracks each application through frontmatter metadata, generates job intelligence, and can compile deterministic resumes and cover letters from a validated Career Knowledge Base (CKB). **Ollama** running **Gemma 4** remains the default local provider, so the normal intelligence workflow requires no paid API key.
+
+Phase 3 is currently an **integrated alpha**. The `apply` to `completed` path exists and is covered by integration tests, but it is not considered production-safe until the fail-closed configuration, diagnostic enforcement, transactional packet publishing, and hermetic test gates in [`PHASE3_STABILIZATION.md`](PHASE3_STABILIZATION.md) are complete.
 
 The Forge is not a generic resume generator and is not intended for application spam. Its product direction is quality over volume: help candidates apply to fewer roles with stronger precision, stronger verified evidence, and better preparation.
 
@@ -60,12 +62,12 @@ graph TD
     E -->|Rewrite to Vault| F(Vault: #intel-ready)
     F --> G{Human Gate 2: Reviewing Intel}
     G -->|Update state to #apply| H[The Forge Anvil]
-    H -->|Planned: Evidence Mapping| I[Evidence Map and Gap Analysis]
-    I -->|Planned: Verified Artifact Drafting| J[Resume/Cover Letter/Outreach/Interview Prep]
+    H --> I[CKB Validation and Deterministic Claim Planning]
+    I --> J[Resume and Cover Letter Compilation]
     J --> K(Completed: #completed)
 ```
 
-The currently implemented processor performs the `favorite` to `intel-ready` intelligence step. Evidence maps, tailored resumes, cover letters, recruiter messages, interview prep guides, requirement match/gap analysis, and candidate follow-up questions are part of the product model and planned artifact workflow.
+The implemented processor supports `new` to `processed`, `favorite` to `intel-ready`, and `apply` to `completed`. The application path currently produces Markdown resumes and cover letters from authorized CKB claims. Deep semantic requirement mapping, recruiter outreach, interview preparation, structured match/gap exports, additional formats, and a fully transactional packet publisher remain planned.
 
 ## Project Structure
 
@@ -249,7 +251,7 @@ The running watcher (`theforge run`) will intercept this change and generate tai
 
 You can supply your personal contact details using environment variables. These will be dynamically injected into the generated Resume and Cover Letter at compile-time:
 
-* `THEFORGE_CONTACT_NAME` (Defaults to "Tony Stark")
+* `THEFORGE_CONTACT_NAME` (currently defaults to the fictional example value "Tony Stark"; stabilization will make this required)
 * `THEFORGE_CONTACT_EMAIL`
 * `THEFORGE_CONTACT_PHONE`
 * `THEFORGE_CONTACT_ADDRESS`
@@ -265,7 +267,7 @@ export THEFORGE_CONTACT_PHONE="555-0199"
 
 ### Overriding the Career Knowledge Base (CKB) Directory
 
-By default, the engine loads files from `./ckb` in the current working directory. You can specify a custom directory using the `THEFORGE_CKB_DIR` environment variable:
+By default, the engine loads files from `./ckb` in the current working directory. The committed directory contains fictional example data and must not be used for a real application. Specify your private CKB using the `THEFORGE_CKB_DIR` environment variable:
 
 ```sh
 export THEFORGE_CKB_DIR="/path/to/your/ckb-vault"

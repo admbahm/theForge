@@ -7,7 +7,8 @@ The Forge is a local-first, event-driven career intelligence pipeline written in
 
 *   **State Management (Filesystem-as-Database)**: Uses the local filesystem—specifically an Obsidian Vault—as the primary state-driven database. State is stored in YAML frontmatter within Markdown files.
 *   **Event-Driven Watching**: Uses `github.com/fsnotify/fsnotify` to watch the vault recursively for file modifications and creations.
-*   **External Integration (Local AI)**: Interacts with a local **Ollama** server running the `gemma4:e4b` model (default) over HTTP (`/api/generate` endpoint) to enrich job postings with AI-generated intelligence.
+*   **External Integration (AI Providers)**: Uses provider-neutral clients for Ollama (the local default), OpenAI, and Gemini to enrich job postings. Deterministic CKB artifact compilation does not require an LLM.
+*   **Career Knowledge Base Compiler**: Parses and validates structured Markdown, extracts and authorizes claims, plans artifacts under evidence policies, and deterministically renders/export artifacts with provenance.
 *   **Core Dependencies**:
     *   `gopkg.in/yaml.v3` (for YAML parsing and AST manipulation to preserve comments/unrecognized keys)
     *   `github.com/fsnotify/fsnotify` (for filesystem event listening)
@@ -18,11 +19,14 @@ graph TD
     A[OpenHunt Crawling] -->|Inbound MD| B(Inbox Folder: #new)
     B --> C{Human Gate 1: Vetting}
     C -->|Update state to #favorite| D[The Forge Watcher / Orchestrator]
-    D -->|Trigger Ollama client| E[Ollama: Gemma 4 Model]
+    D -->|Trigger configured provider| E[Ollama / OpenAI / Gemini]
     E -->|Generate Job Intel| D
     D -->|Atomic Write / Rewrite MD| F(Vault: #intel-ready)
     F --> G{Human Gate 2: Reviewing Intel}
-    G -->|Update state to #apply| H[The Forge Anvil: Planned]
+    G -->|Update state to #apply| H[The Forge Anvil: Integrated Alpha]
+    H --> I[Validated CKB and Claim Planning]
+    I --> J[Resume and Cover Letter]
+    J --> K(Vault: #completed)
 ```
 
 ---
@@ -35,10 +39,12 @@ Future changes must adhere strictly to these patterns:
     *   `cmd/theforge`: CLI entry point, configuration loading, signals orchestration.
     *   `internal/config`: Configurations and environment validation (`.env`).
     *   `internal/ollama`: Ollama client communicating via HTTP API.
+    *   `internal/llm`: Provider selection and OpenAI/Gemini clients.
+    *   `ckb/*`: CKB parsing, validation, claims, planning, rendering, and export.
     *   `pkg/engine`: Event loop, watcher, folder walker (`Orchestrator`).
     *   `pkg/models`: Structure and serialization/deserialization models (`JobPost`).
 *   **AST Frontmatter Preservation**: Frontmatter updates are performed using `yaml.Node` to construct/modify mapping entries. This preserves existing, unknown fields, and file formatting upon writes.
-*   **Atomic Write Pattern**: To prevent file truncation on write/power failure, files are written to a temporary file (`.filename.*.tmp`) in the same directory, verified, synced, and atomically renamed.
+*   **Atomic Job-Note Write Pattern**: Job-note changes use a same-directory temporary file (`.filename.*.tmp`), sync, and atomic rename. Application packet files still require transactional publication as part of Phase 3 stabilization.
 *   **Strict Evidence Rules**: Inventions of metrics, dates, or experience are strictly prohibited. Untracked experience is labeled as "transferable" or "gap".
 
 ---
@@ -53,8 +59,11 @@ Future changes must adhere strictly to these patterns:
     *   **Local Tier (`local`)**: Filters `new`/`""` -> processes locally via Ollama to extract core signals -> transitions state to `processed`.
     *   **Frontier Tier (`frontier`)**: Filters `favorite` -> processes via premium API (Gemini/OpenAI) to perform deep synthesis -> transitions state to `intel-ready`.
     *   **Auto Tier (`auto`)**: Automatically coordinates both local and frontier transitions.
-5.  **Process Flow**:
+    *   **Application (`apply`)**: Validates the CKB, builds strict-public resume and cover-letter plans, renders Markdown artifacts, writes them under the vault's `applications` directory, and transitions the source note to `completed`.
+5.  **Intelligence Process Flow**:
     `Orchestrator.handleFile(path)` $\rightarrow$ Reads $\rightarrow$ Unmarshals $\rightarrow$ Filter state and tier $\rightarrow$ Optimize VRAM (unload conflicting models via `/api/ps` and `keep_alive: 0`) $\rightarrow$ Call `IntelGenerator.GenerateIntel()` with context tier value $\rightarrow$ Overwrite existing `The Forge Intelligence` section $\rightarrow$ Atomic write.
+6.  **Application Process Flow**:
+    `Orchestrator.handleFile(path)` $\rightarrow$ Detect `apply` $\rightarrow$ Parse/validate CKB $\rightarrow$ Build strict-public plans $\rightarrow$ Render resume and cover letter $\rightarrow$ Export packet $\rightarrow$ Atomically update source note to `completed`.
 
 ---
 
@@ -63,3 +72,4 @@ Future changes must adhere strictly to these patterns:
 *   **Ollama Client Timeout & Failures**: Ollama runs locally and can be slow/stuck. The client uses a circuit breaker (tripping after 3 failures with a cooldown) and a 60-second request timeout limit.
 *   **VRAM Swapping Latency**: Swapping active models on limited hardware introduces latency. The manager unloads conflicting active models prior to local runs to prevent system thrashing.
 *   **Testing Discipline**: Tests must use temporary folders (`t.TempDir()`). Never point tests at a real Obsidian vault.
+*   **Phase 3 Alpha Risks**: The repository CKB and fallback identity are fictional examples, artifact files are not yet transactionally published, planner/renderer blocking diagnostics need orchestration enforcement, and one provider-construction test currently depends on a real Gemini response. These are release gates in `PHASE3_STABILIZATION.md`.

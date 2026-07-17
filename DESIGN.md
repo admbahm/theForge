@@ -41,11 +41,12 @@ Unlike traditional systems that rely on a centralized SQL or NoSQL database, The
 - **Action**: For jobs selected with `state: favorite`, The Forge triggers AI tasks to parse the job description into requirements, responsibilities, keywords, domain signals, implied expectations, evidence needs, transferable positioning, gaps, unsupported claims, candidate follow-up questions, and interview themes.
 - **State Transition**: Updates the file's frontmatter and content with the generated intel, moving the state to `intel-ready`.
 
-### Phase 3: Evidence Mapping & Artifact Drafting (Planned)
-- **Action**: Match each job requirement to verified candidate evidence before producing application materials.
-- **Required Intermediate Output**: A traceable evidence map that records source facts, unsupported requirements, transferable skills, and candidate follow-up questions.
-- **Candidate-Facing Outputs**: Tailored resume, cover letter, recruiter outreach message, interview prep guide, and requirement match/gap analysis.
-- **State Transition**: After review and application, the job state can move to `completed`.
+### Phase 3: Evidence Planning & Artifact Compilation (Integrated Alpha)
+- **Implemented**: Parse and validate a CKB, extract and authorize claims, build deterministic artifact plans, compile Markdown resumes and cover letters, preserve the source job note, and transition `apply` to `completed` after generation.
+- **Current Boundary**: Planning uses structured target fields such as role, company, and technologies. Deep semantic requirement-to-evidence matching and explicit direct/transferable/gap output are not yet complete.
+- **Stabilization Required**: Fail closed on example identity/CKB data, enforce all blocking diagnostics, publish the packet transactionally, make application processing restart-safe, and keep the full test suite network-independent.
+- **Planned Outputs**: Recruiter outreach, interview preparation, structured match/gap analysis, candidate follow-up questions, and additional export formats.
+- **Release Gate**: The application pipeline remains alpha until `PHASE3_STABILIZATION.md` is complete.
 
 ## Agent Responsibilities
 
@@ -62,11 +63,11 @@ The same verified accomplishment may be reframed for different job families, inc
 
 ## Output Contract
 
-The planned application workflow should produce:
+The application workflow currently produces the first two artifacts below. The remaining packet is planned:
 
-- Evidence map
-- Tailored resume
-- Cover letter
+- Internal authorized claim plan and provenance manifest
+- Tailored Markdown resume
+- Markdown cover letter
 - Recruiter outreach message
 - Interview prep guide
 - Requirement match/gap analysis
@@ -74,7 +75,7 @@ The planned application workflow should produce:
 
 ## LLM Providers
 
-The analysis layer uses a provider-neutral client contract. Ollama with `gemma4:e4b` is the default local implementation and requires no paid API key. OpenAI and Gemini have BYOK configuration seams that read keys from named environment variables only when selected; their HTTP generation clients remain planned.
+The analysis layer uses a provider-neutral client contract. Ollama with `gemma4:e4b` is the default local implementation and requires no paid API key. OpenAI and Gemini have implemented BYOK HTTP clients that read keys from named environment variables only when selected. Deterministic artifact compilation does not require an LLM.
 
 ## Technology Stack
 - **Language**: Go
