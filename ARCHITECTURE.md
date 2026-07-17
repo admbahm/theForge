@@ -15,12 +15,16 @@ graph TD
         A[Incoming Job Posting: state: new]
         B[Selected Job Posting: state: favorite]
         C[Enriched Job Posting: state: intel-ready]
+        G[Approved Job Posting: state: apply]
+        H[Application Packet: state: completed]
     end
 
     subgraph The Forge Engine
         D[Recursive fsnotify Watcher]
         E[Job Post Parser / Serializer]
         F[LLM Provider Client]
+        I[CKB Parser / Claim Planner]
+        J[Deterministic Artifact Renderer]
     end
 
     A -->|User manual review| B
@@ -29,6 +33,11 @@ graph TD
     E -->|Extracted Job Data| F
     F -->|Generate intelligence| E
     E -->|Atomic Write back to disk| C
+    C -->|User approves application| G
+    G -->|File Event Trigger| D
+    D --> I
+    I --> J
+    J -->|Resume and cover letter| H
 ```
 
 ---
@@ -40,11 +49,13 @@ graph TD
 *   `internal/config/config.go`
     *   **Responsibility**: Loads `theforge.yaml`, `.env`, and environment overrides; preserves Ollama defaults; records provider model and API-key environment variable names; resolves paths; and validates directory existence.
 *   `internal/llm/client.go`
-    *   **Responsibility**: Defines the provider-neutral client contract and selects Ollama, OpenAI, or Gemini. Ollama is the fully implemented default. OpenAI and Gemini are BYOK stubs that validate their selected key environment variable and return a clear not-implemented generation error.
+    *   **Responsibility**: Defines the provider-neutral client contract and selects the implemented Ollama, OpenAI, or Gemini HTTP client. Ollama is the local default; OpenAI and Gemini use BYOK environment configuration.
+*   `ckb/parser`, `ckb/claims`, `ckb/planning`, `ckb/rendering`, `ckb/export`
+    *   **Responsibility**: Parse and validate the CKB, extract and authorize evidence-backed claims, build deterministic artifact plans, render candidate-facing artifacts, and export artifacts with provenance.
 *   `internal/ollama/client.go`
     *   **Responsibility**: Implements the provider-neutral client contract. Wraps HTTP queries to the local Ollama API (specifically `/api/generate` default endpoint), sets generation parameters (like low temperature for predictability), constructs structured prompts, and cleans output code blocks.
 *   `pkg/engine/orchestrator.go`
-    *   **Responsibility**: Implements recursive filesystem directory watching via `fsnotify` and coordinates vault scanning. The event loop enqueues Markdown paths while a worker parses state criteria, calls the provider-neutral intelligence generator, and persists changes. A pending/in-flight set coalesces event storms by filepath.
+    *   **Responsibility**: Implements recursive filesystem directory watching via `fsnotify` and coordinates vault scanning. Workers perform intelligence transitions or, for `state: apply`, invoke the CKB planning/rendering pipeline and write a resume and cover letter. A pending/in-flight set coalesces event storms by filepath.
 *   `pkg/models/job_post.go`
     *   **Responsibility**: Defines the core schema (`JobPost` struct). Provides helpers to separate YAML frontmatter metadata from the Markdown body (`splitMarkdown`), parses structures, and updates individual state properties using low-level YAML AST mapping.
 
@@ -76,7 +87,7 @@ sequenceDiagram
 ```
 
 ### Key Safety Constraints:
-1.  **Atomic Writing**: Writes never happen directly in-place. The application writes to a temporary file in the same directory, syncs to disk to guarantee persistence, and performs a native OS rename operation. This prevents truncation or corruption if the tool crashes or loses power during processing.
+1.  **Atomic Source-Note Writing**: Job-note updates use a same-directory temporary file, sync, and rename. Phase 3 artifact files are not yet published transactionally; closing that gap is a stabilization release gate.
 2.  **AST Manipulation**: Instead of marshaling the model struct back to YAML (which would erase custom, unknown YAML keys added by other plugins), the engine parses the YAML into a generic `yaml.Node` tree, edits only the `state` key, and marshals it back.
 
 ---
@@ -121,7 +132,7 @@ graph TD
 
 ---
 
-## 5. Candidate Evidence & Application Pipeline (Phase 3+)
+## 5. Candidate Evidence & Application Pipeline (Phase 3 Integrated Alpha)
 
 The Forge transitions job intelligence into actionable application materials through a decoupled, evidence-first generation pipeline:
 
@@ -129,8 +140,8 @@ The Forge transitions job intelligence into actionable application materials thr
 graph TD
     A[OpenHunt Scraped Post] --> B[Job Posting Markdown]
     B --> C[The Forge Intelligence Extraction]
-    C --> D[Candidate Evidence Mapping Layer]
-    D --> E[Tailored Application Artifacts]
+    C --> D[Validated CKB and Authorized Claim Planning]
+    D --> E[Markdown Resume and Cover Letter]
     E --> F[Downstream Canvas & Analytics]
 ```
 
@@ -140,10 +151,13 @@ graph TD
    - **Artifact Generation** is independent from **Downstream Analytics** (Canvas views, Dataview querying, trend analysis).
    - Downstream dashboards and canvas visualizers consume the outputs of earlier phases.
 2. **Authoritative Evidence Source-of-Truth**:
-   - Rather than parsing raw job descriptions directly, downstream tailors and generator components consume a unified **Candidate Evidence Graph**.
-   - This mapping layer correlates verified credentials, projects, and work history to specific job requirements.
+   - Generator components consume validated CKB objects and authorized claims rather than inventing candidate facts from the job description.
+   - The current planner targets structured role and technology fields. Deep semantic mapping of complete job requirements to direct, transferable, or gap evidence remains planned.
 3. **Strict Traceability & Fact Verification**:
    - Invention of candidate achievements is strictly forbidden.
    - Match statuses assign confidence metrics (direct match, transferable, or gap).
    - Every generated resume bullet or application claim must be traceable back to supporting items in the candidate's verified evidence vault.
 
+### Stabilization Boundary
+
+Phase 3 is not production-ready. The source note is updated atomically, but packet files are currently written directly; the default repository CKB and identity are fictional examples; and planner/renderer diagnostics require stricter orchestration enforcement. [`PHASE3_STABILIZATION.md`](PHASE3_STABILIZATION.md) defines the release gate.

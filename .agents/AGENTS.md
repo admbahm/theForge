@@ -7,7 +7,7 @@ These rules apply to all work in this repository.
 - Treat The Forge as a local-first Go application that uses Markdown files with YAML frontmatter as its state store.
 - Keep the Obsidian vault human-readable and usable without The Forge running.
 - Treat The Forge as a career intelligence system for ethical, evidence-based AI-assisted job applications, not as a generic resume generator.
-- Distinguish implemented behavior from planned behavior. Ollama integration, the multi-tier funnel CLI flags (`local`, `frontier`, `auto` tiers), and the `new` to `processed` / `favorite` to `intel-ready` transitions are implemented; evidence mapping and application artifact generation remain planned.
+- Distinguish implemented behavior from planned behavior. The multi-tier intelligence funnel, CKB parsing/validation, deterministic claim planning and rendering, and the `apply` to `completed` resume/cover-letter path are implemented. Phase 3 remains an integrated alpha until the stabilization gates in `PHASE3_STABILIZATION.md` are complete. Semantic requirement mapping, transactional packet publication, additional packet artifacts, and LLM-assisted refinement remain planned.
 - Maintain compatibility with the OpenHunt frontmatter contract documented in `README.md` and `DESIGN.md`.
 
 ## Evidence and Product Rules
@@ -79,4 +79,3 @@ To guarantee continuity across distinct agent sessions or when approaching messa
   4. **Immediate Next Steps**: Clear, actionable directions for the next agent to continue without losing context.
   5. **Pending Open Questions/Blockers**: Technical decisions, gaps in information, or blockers.
 - Before ending a session (either successfully or due to limits), the agent must perform a validation check (`go test ./...`) and write the final state to `HANDOFF.md`.
-

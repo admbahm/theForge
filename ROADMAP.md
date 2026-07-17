@@ -24,14 +24,18 @@ This roadmap outlines the evolution of **The Forge** from a local-first watcher 
     *   [x] **State Automation**: Parse frontmatter fields (`state` values: `new`, `processed`, `favorite`, `intel-ready`) or custom Obsidian tags to navigate jobs between funnel stages.
 
 ---
-## Phase 3: Candidate Evidence & Application Artifact Pipeline (Next)
-*   [ ] **Company Directory Organization**: Move parsed postings into dedicated company/job folders to organize clean application packets.
+## Phase 3: Candidate Evidence & Application Artifact Pipeline (Integrated Alpha / Stabilization)
+*   [x] **CKB Parser and Validation**: Parse the Markdown CKB into a validated in-memory graph with privacy and integrity diagnostics.
+*   [x] **Deterministic Claim Planning**: Extract, authorize, score, and select traceable claims under artifact policies.
+*   [x] **Resume Tailoring Baseline**: Compile a deterministic Markdown resume from an authorized artifact plan.
+*   [x] **Cover Letter Baseline**: Compile a deterministic Markdown cover letter from authorized claims and target context.
+*   [x] **Application Directory Baseline**: Write resume and cover-letter files under `<vault>/applications/<company>-<role>/`.
+*   [x] **Watcher Integration**: Process `state: apply`, preserve the source note, and transition to `state: completed` after successful generation.
+*   [ ] **Phase 3 Stabilization Gate**: Complete the safety, transactionality, diagnostic, idempotency, and test requirements in `PHASE3_STABILIZATION.md`.
 *   [ ] **Structured Intelligence Payloads**: Emit JSON / JSON-LD alongside markdown so downstream tools can easily query job requirements, risks, skills, and match evidence.
-*   [ ] **Candidate Evidence Graph**: Implement an internal evidence mapping layer mapping job requirements to verified candidate evidence (e.g. master resume, portfolio, GitHub).
+*   [ ] **Deep Requirement Mapping**: Extend the existing CKB claim graph and planner to map full job requirements to verified evidence.
     *   **Traceability**: Downstream generators must consume this evidence layer instead of job postings directly, ensuring every resume claim or bullet point maps back to verifiable facts with no fabrication.
     *   **Confidence Scores**: Assign match confidence (direct, transferable, or gap) to requirements.
-*   [ ] **Resume Tailoring Engine**: Generate custom resume variants consuming the authoritative Evidence Graph, tracing generated bullets back to verified facts.
-*   [ ] **Cover Letter Generation**: Draft role-specific cover letters aligned with the verified evidence mappings and company context.
 *   [ ] **Outreach & Networking Drafts**: Generate targeted recruiter outreach, hiring manager messages, and peer networking drafts.
 *   [ ] **Interview Preparation Package**: Generate custom interview guides with anticipated questions, STAR-method talking points mapped to evidence, and core company themes.
 *   [ ] **Unified Application Packet Exporter**: Consolidate all pipeline outputs (intelligence markdown, structured payload, tailored resume, cover letter, recruiter message, interview prep, and company research) into a single unified directory package.
