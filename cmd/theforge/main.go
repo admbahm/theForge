@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/admbahm/theForge/ckb/model"
 	"github.com/admbahm/theForge/ckb/parser"
 	"github.com/admbahm/theForge/ckb/planning"
+	"github.com/admbahm/theForge/ckb/rendering"
 	"github.com/admbahm/theForge/internal/config"
 	"github.com/admbahm/theForge/internal/llm"
 	"github.com/admbahm/theForge/pkg/engine"
@@ -99,6 +101,18 @@ func run(ctx context.Context, cfg config.Config, tier string) error {
 		return fmt.Errorf("create orchestrator: %w", err)
 	}
 	defer orchestrator.Stop()
+	orchestrator.SetApplicationConfig(engine.ApplicationConfig{
+		CKBDir:   cfg.Application.CKBDir,
+		DemoMode: cfg.Application.DemoMode,
+		Contact: rendering.ContactInfo{
+			Name:        cfg.Application.Contact.Name,
+			Email:       cfg.Application.Contact.Email,
+			Phone:       cfg.Application.Contact.Phone,
+			Address:     cfg.Application.Contact.Address,
+			LinkedInURL: cfg.Application.Contact.LinkedInURL,
+			GitHubURL:   cfg.Application.Contact.GitHubURL,
+		},
+	})
 
 	if err := orchestrator.SetTier(tier); err != nil {
 		return fmt.Errorf("set orchestrator tier: %w", err)
@@ -112,7 +126,11 @@ func run(ctx context.Context, cfg config.Config, tier string) error {
 	if provider == "" {
 		provider = config.DefaultLLMProvider
 	}
-	log.Printf("Watching OpenHunt output directory: %s (LLM provider: %s, Tier: %s)", cfg.OpenHuntOutputDir, provider, tier)
+	ckbStatus := "not configured (application generation disabled)"
+	if cfg.Application.CKBDir != "" {
+		ckbStatus = cfg.Application.CKBDir
+	}
+	log.Printf("Preflight: vault=%s ckb=%s output=%s provider=%s tier=%s demo_mode=%t", cfg.OpenHuntOutputDir, ckbStatus, filepath.Join(cfg.OpenHuntOutputDir, "applications"), provider, tier, cfg.Application.DemoMode)
 	<-ctx.Done()
 	log.Printf("Shutdown requested")
 	return nil
@@ -267,7 +285,7 @@ func runCKBPlan(args []string) {
 
 	req := planning.PlanRequest{
 		ArtifactType: planning.TypeResume, // Default to resume
-		PolicyID:     "StrictPublic",       // Default policy
+		PolicyID:     "StrictPublic",      // Default policy
 		Target:       target,
 	}
 

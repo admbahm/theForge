@@ -31,6 +31,7 @@ This roadmap outlines the evolution of **The Forge** from a local-first watcher 
 *   [x] **Cover Letter Baseline**: Compile a deterministic Markdown cover letter from authorized claims and target context.
 *   [x] **Application Directory Baseline**: Write resume and cover-letter files under `<vault>/applications/<company>-<role>/`.
 *   [x] **Watcher Integration**: Process `state: apply`, preserve the source note, and transition to `state: completed` after successful generation.
+*   [x] **Transactional Packet Publication**: Stage and sync resume, cover letter, and digest/provenance manifest as one rollback-safe directory publication.
 *   [ ] **Phase 3 Stabilization Gate**: Complete the safety, transactionality, diagnostic, idempotency, and test requirements in `PHASE3_STABILIZATION.md`.
 *   [ ] **Structured Intelligence Payloads**: Emit JSON / JSON-LD alongside markdown so downstream tools can easily query job requirements, risks, skills, and match evidence.
 *   [ ] **Deep Requirement Mapping**: Extend the existing CKB claim graph and planner to map full job requirements to verified evidence.

@@ -12,6 +12,8 @@ Phase 3 is stable when the pipeline fails closed on unsafe configuration or evid
 
 ## Workstream 1: Fail-Closed Identity and CKB Configuration
 
+**Status: Complete on `codex/phase3-stabilization`.**
+
 ### Problem
 
 The application pipeline currently defaults to `./ckb`, which contains fictional public examples, and substitutes `Tony Stark` when no contact name is supplied. This is convenient for demos but unsafe for real applications.
@@ -34,6 +36,8 @@ The application pipeline currently defaults to `./ckb`, which contains fictional
 
 ## Workstream 2: Diagnostic and Evidence Enforcement
 
+**Status: Complete on `codex/phase3-stabilization`.**
+
 ### Problem
 
 Parser errors block generation, but planning and rendering diagnostics are not uniformly treated as release gates when a non-nil plan or artifact is returned.
@@ -55,6 +59,8 @@ Parser errors block generation, but planning and rendering diagnostics are not u
 - AWS-with-only-GCP/Kubernetes/Terraform and missing-metric cases pass explicit regression tests.
 
 ## Workstream 3: Transactional Application Packet Publication
+
+**Status: Complete on `codex/phase3-stabilization`.**
 
 ### Problem
 
@@ -98,6 +104,8 @@ State handling is distributed through conditional logic, and duplicate events ar
 - Application output files do not recursively enter the job-processing pipeline.
 
 ## Workstream 5: Hermetic Verification and Operational Observability
+
+**Status: Hermetic test/race/vet gates complete; structured failure diagnostics and dry-run behavior remain in progress.**
 
 ### Problem
 

@@ -1,11 +1,13 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
@@ -36,6 +38,14 @@ type Orchestrator struct {
 	pending     map[string]struct{}
 	workers     sync.WaitGroup
 	tier        string
+	application ApplicationConfig
+	publisher   packetPublisher
+}
+
+type ApplicationConfig struct {
+	CKBDir   string
+	DemoMode bool
+	Contact  rendering.ContactInfo
 }
 
 const jobQueueSize = 32
@@ -70,6 +80,7 @@ func NewOrchestratorWithConcurrency(vaultPath string, generator IntelGenerator, 
 		jobs:        make(chan string, jobQueueSize),
 		pending:     make(map[string]struct{}),
 		tier:        "auto",
+		publisher:   defaultPacketPublisher(),
 	}, nil
 }
 
@@ -81,6 +92,13 @@ func (o *Orchestrator) SetTier(tier string) error {
 	}
 	o.tier = tier
 	return nil
+}
+
+// SetApplicationConfig supplies the explicitly configured evidence and identity
+// used for public application artifacts. Validation is repeated at processing
+// time so an unsafe configuration can never silently fall back to examples.
+func (o *Orchestrator) SetApplicationConfig(cfg ApplicationConfig) {
+	o.application = cfg
 }
 
 // Start begins recursive vault monitoring and performs an initial scan.
@@ -307,9 +325,15 @@ func (o *Orchestrator) handleFile(path string) {
 }
 
 func (o *Orchestrator) processApply(path string, job models.JobPost) error {
-	ckbPath := "./ckb"
-	if envCkb := os.Getenv("THEFORGE_CKB_DIR"); envCkb != "" {
-		ckbPath = envCkb
+	ckbPath := strings.TrimSpace(o.application.CKBDir)
+	if ckbPath == "" {
+		return fmt.Errorf("application configuration: THEFORGE_CKB_DIR is required; no artifacts were published")
+	}
+	if strings.TrimSpace(o.application.Contact.Name) == "" {
+		return fmt.Errorf("application configuration: THEFORGE_CONTACT_NAME is required; no artifacts were published")
+	}
+	if strings.TrimSpace(o.application.Contact.Email) == "" {
+		return fmt.Errorf("application configuration: THEFORGE_CONTACT_EMAIL is required; no artifacts were published")
 	}
 
 	opts := parser.ParseOptions{
@@ -320,15 +344,8 @@ func (o *Orchestrator) processApply(path string, job models.JobPost) error {
 
 	ckbRes := parser.ParseDirectory(o.ctx, ckbPath, opts)
 
-	hasErrors := false
-	for _, diag := range ckbRes.Diagnostics {
-		if diag.Severity == model.SeverityError || diag.Severity == model.SeverityFatal {
-			log.Printf("[Error] CKB diagnostic error: %s (File: %s)", diag.Message, diag.Source.FilePath)
-			hasErrors = true
-		}
-	}
-	if hasErrors {
-		return fmt.Errorf("CKB contains validation errors")
+	if model.HasBlockingDiagnostics(ckbRes.Diagnostics) {
+		return blockingDiagnosticError("CKB parsing", ckbRes.Diagnostics)
 	}
 
 	target := &planning.TargetProfile{
@@ -343,6 +360,9 @@ func (o *Orchestrator) processApply(path string, job models.JobPost) error {
 		Target:       target,
 	}
 	resumePlanRes := planning.BuildPlan(o.ctx, ckbRes.KnowledgeBase, resumeReq)
+	if model.HasBlockingDiagnostics(resumePlanRes.Diagnostics) {
+		return blockingDiagnosticError("resume planning", resumePlanRes.Diagnostics)
+	}
 	if resumePlanRes.Plan == nil {
 		return fmt.Errorf("resume plan construction failed")
 	}
@@ -353,27 +373,23 @@ func (o *Orchestrator) processApply(path string, job models.JobPost) error {
 		Target:       target,
 	}
 	clPlanRes := planning.BuildPlan(o.ctx, ckbRes.KnowledgeBase, clReq)
+	if model.HasBlockingDiagnostics(clPlanRes.Diagnostics) {
+		return blockingDiagnosticError("cover letter planning", clPlanRes.Diagnostics)
+	}
 	if clPlanRes.Plan == nil {
 		return fmt.Errorf("cover letter plan construction failed")
 	}
 
-	contact := rendering.ContactInfo{
-		Name:        os.Getenv("THEFORGE_CONTACT_NAME"),
-		Email:       os.Getenv("THEFORGE_CONTACT_EMAIL"),
-		Phone:       os.Getenv("THEFORGE_CONTACT_PHONE"),
-		Address:     os.Getenv("THEFORGE_CONTACT_ADDRESS"),
-		LinkedInURL: os.Getenv("THEFORGE_CONTACT_LINKEDIN"),
-		GitHubURL:   os.Getenv("THEFORGE_CONTACT_GITHUB"),
-	}
-	if contact.Name == "" {
-		contact.Name = "Tony Stark"
-	}
+	contact := o.application.Contact
 
 	resumeRenderReq := rendering.RenderRequest{
 		Plan:    resumePlanRes.Plan,
 		Options: rendering.RenderOptions{Contact: contact},
 	}
 	resumeRenderRes := rendering.Render(o.ctx, resumeRenderReq)
+	if model.HasBlockingDiagnostics(resumeRenderRes.Diagnostics) {
+		return blockingDiagnosticError("resume rendering", resumeRenderRes.Diagnostics)
+	}
 	if resumeRenderRes.Artifact == nil {
 		return fmt.Errorf("resume rendering failed")
 	}
@@ -383,41 +399,104 @@ func (o *Orchestrator) processApply(path string, job models.JobPost) error {
 		Options: rendering.RenderOptions{Contact: contact},
 	}
 	clRenderRes := rendering.Render(o.ctx, clRenderReq)
+	if model.HasBlockingDiagnostics(clRenderRes.Diagnostics) {
+		return blockingDiagnosticError("cover letter rendering", clRenderRes.Diagnostics)
+	}
 	if clRenderRes.Artifact == nil {
 		return fmt.Errorf("cover letter rendering failed")
 	}
 
-	companySanitized := sanitizePathSegment(job.Company)
-	titleSanitized := sanitizePathSegment(job.Title)
-	appDir := filepath.Join(o.vaultPath, "applications", fmt.Sprintf("%s-%s", companySanitized, titleSanitized))
-	if err := os.MkdirAll(appDir, 0755); err != nil {
-		return fmt.Errorf("failed to create application dir: %w", err)
-	}
-
-	resumePath := filepath.Join(appDir, "resume.md")
-	resumeFile, err := os.Create(resumePath)
+	resumeBytes, err := renderArtifactMarkdown(resumeRenderRes.Artifact, o.application.DemoMode)
 	if err != nil {
-		return fmt.Errorf("failed to create resume file: %w", err)
+		return fmt.Errorf("export resume markdown: %w", err)
 	}
-	defer resumeFile.Close()
-
-	if err := export.ExportMarkdown(resumeRenderRes.Artifact, resumeFile, export.MarkdownOptions{IncludeHeadings: true}); err != nil {
-		return fmt.Errorf("failed to export resume markdown: %w", err)
-	}
-
-	clPath := filepath.Join(appDir, "cover_letter.md")
-	clFile, err := os.Create(clPath)
+	coverLetterBytes, err := renderArtifactMarkdown(clRenderRes.Artifact, o.application.DemoMode)
 	if err != nil {
-		return fmt.Errorf("failed to create cover letter file: %w", err)
-	}
-	defer clFile.Close()
-
-	if err := export.ExportMarkdown(clRenderRes.Artifact, clFile, export.MarkdownOptions{IncludeHeadings: true}); err != nil {
-		return fmt.Errorf("failed to export cover letter markdown: %w", err)
+		return fmt.Errorf("export cover letter markdown: %w", err)
 	}
 
-	log.Printf("[Success] Tailored application materials generated at %s", appDir)
+	packetName := fmt.Sprintf("%s-%s", sanitizePathSegment(job.Company), sanitizePathSegment(job.Title))
+	applicationsDir := filepath.Join(o.vaultPath, "applications")
+	packet := applicationPacket{
+		Files: map[string][]byte{
+			"cover_letter.md": coverLetterBytes,
+			"resume.md":       resumeBytes,
+		},
+		Manifest: packetManifest{
+			SchemaVersion:   packetSchemaVersion,
+			CompilerVersion: "theforge-phase3-alpha",
+			Job: packetJobIdentity{
+				JobID:   job.JobID,
+				Company: job.Company,
+				Title:   job.Title,
+			},
+			DemoMode: o.application.DemoMode,
+			Warnings: mergeWarningCodes(resumePlanRes.Diagnostics, clPlanRes.Diagnostics, resumeRenderRes.Diagnostics, clRenderRes.Diagnostics),
+			Files: []packetManifestFile{
+				manifestFileForArtifact("cover_letter.md", coverLetterBytes, clRenderRes.Artifact),
+				manifestFileForArtifact("resume.md", resumeBytes, resumeRenderRes.Artifact),
+			},
+		},
+	}
+	if err := o.publisher.publish(applicationsDir, packetName, packet); err != nil {
+		return fmt.Errorf("publish application packet: %w", err)
+	}
+
+	log.Printf("[Success] Tailored application packet generated at %s", filepath.Join(applicationsDir, packetName))
 	return nil
+}
+
+func renderArtifactMarkdown(artifact *rendering.Artifact, demoMode bool) ([]byte, error) {
+	var output bytes.Buffer
+	if demoMode {
+		output.WriteString("> **THE FORGE DEMO OUTPUT — FICTIONAL DATA — DO NOT SUBMIT**\n\n")
+	}
+	if err := export.ExportMarkdown(artifact, &output, export.MarkdownOptions{IncludeHeadings: true}); err != nil {
+		return nil, err
+	}
+	return output.Bytes(), nil
+}
+
+func manifestFileForArtifact(name string, data []byte, artifact *rendering.Artifact) packetManifestFile {
+	return packetManifestFile{
+		Name:               name,
+		ArtifactType:       string(artifact.Type),
+		SHA256:             digestBytes(data),
+		Size:               len(data),
+		ContentDigest:      artifact.Manifest.ContentDigest,
+		SourceReferences:   append([]string(nil), artifact.Manifest.SourceReferences...),
+		EvidenceReferences: append([]string(nil), artifact.Manifest.EvidenceReferences...),
+		Warnings:           append([]string(nil), artifact.Manifest.Warnings...),
+	}
+}
+
+func mergeWarningCodes(groups ...[]model.Diagnostic) []string {
+	seen := make(map[string]struct{})
+	var warnings []string
+	for _, diagnostics := range groups {
+		for _, diagnostic := range diagnostics {
+			if diagnostic.Severity != model.SeverityWarning {
+				continue
+			}
+			code := string(diagnostic.Code)
+			if _, exists := seen[code]; exists {
+				continue
+			}
+			seen[code] = struct{}{}
+			warnings = append(warnings, code)
+		}
+	}
+	sort.Strings(warnings)
+	return warnings
+}
+
+func blockingDiagnosticError(stage string, diagnostics []model.Diagnostic) error {
+	codes := model.BlockingDiagnosticCodes(diagnostics)
+	formatted := make([]string, len(codes))
+	for index, code := range codes {
+		formatted[index] = string(code)
+	}
+	return fmt.Errorf("%s blocked by diagnostic code(s): %s; correct the source data before retrying", stage, strings.Join(formatted, ", "))
 }
 
 func sanitizePathSegment(s string) string {

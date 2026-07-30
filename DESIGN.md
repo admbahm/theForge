@@ -44,7 +44,7 @@ Unlike traditional systems that rely on a centralized SQL or NoSQL database, The
 ### Phase 3: Evidence Planning & Artifact Compilation (Integrated Alpha)
 - **Implemented**: Parse and validate a CKB, extract and authorize claims, build deterministic artifact plans, compile Markdown resumes and cover letters, preserve the source job note, and transition `apply` to `completed` after generation.
 - **Current Boundary**: Planning uses structured target fields such as role, company, and technologies. Deep semantic requirement-to-evidence matching and explicit direct/transferable/gap output are not yet complete.
-- **Stabilization Required**: Fail closed on example identity/CKB data, enforce all blocking diagnostics, publish the packet transactionally, make application processing restart-safe, and keep the full test suite network-independent.
+- **Stabilization Status**: Fail-closed identity/CKB configuration, blocking diagnostics, transactional packet publication, and network-independent verification are implemented. Restart-safe state/idempotency behavior and the controlled trial remain release gates.
 - **Planned Outputs**: Recruiter outreach, interview preparation, structured match/gap analysis, candidate follow-up questions, and additional export formats.
 - **Release Gate**: The application pipeline remains alpha until `PHASE3_STABILIZATION.md` is complete.
 

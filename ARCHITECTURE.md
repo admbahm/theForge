@@ -87,7 +87,7 @@ sequenceDiagram
 ```
 
 ### Key Safety Constraints:
-1.  **Atomic Source-Note Writing**: Job-note updates use a same-directory temporary file, sync, and rename. Phase 3 artifact files are not yet published transactionally; closing that gap is a stabilization release gate.
+1.  **Atomic Writes and Packet Publication**: Job-note updates use a same-directory temporary file, sync, and rename. Phase 3 renders complete packets into a secure sibling staging directory, syncs every file plus the directory, and publishes by rename with rollback to the previous valid packet on replacement failure.
 2.  **AST Manipulation**: Instead of marshaling the model struct back to YAML (which would erase custom, unknown YAML keys added by other plugins), the engine parses the YAML into a generic `yaml.Node` tree, edits only the `state` key, and marshals it back.
 
 ---
@@ -160,4 +160,4 @@ graph TD
 
 ### Stabilization Boundary
 
-Phase 3 is not production-ready. The source note is updated atomically, but packet files are currently written directly; the default repository CKB and identity are fictional examples; and planner/renderer diagnostics require stricter orchestration enforcement. [`PHASE3_STABILIZATION.md`](PHASE3_STABILIZATION.md) defines the release gate.
+Phase 3 is not production-ready. Unsafe CKB/identity defaults, blocking diagnostic enforcement, hermetic tests, and transactional packet publication have been addressed. Explicit state transitions, deterministic build identity, restart recovery, and the controlled private-CKB trial remain release gates in [`PHASE3_STABILIZATION.md`](PHASE3_STABILIZATION.md).
