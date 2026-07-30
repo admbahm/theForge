@@ -135,6 +135,7 @@ func selectForResume(candidates []claims.Claim, req PlanRequest, scores map[stri
 	selectedRoles := make(map[string]bool)
 	roleSources := roleSourceIndex(candidates)
 	employmentBySource := employmentClaimIndex(candidates)
+	plannedRoleSources := plannedResumeRoleSources(candidates, maxRoles, roleSources)
 
 	for _, c := range candidates {
 		over, hasOver := overrides[c.ID]
@@ -157,6 +158,16 @@ func selectForResume(candidates []claims.Claim, req PlanRequest, scores map[stri
 		switch c.Kind {
 		case claims.KindRole, claims.KindEmployment:
 			srcID := primarySourceID(c)
+			if srcID != "" && !plannedRoleSources[srcID] {
+				*excluded = append(*excluded, ExcludedClaim{
+					ClaimID:              c.ID,
+					ExclusionReason:      fmt.Sprintf("Omitted due to page limits (Max %d roles)", maxRoles),
+					ExclusionReasonCode:  "CKB-CLAIM-OUTSIDE-TARGET-SCOPE",
+					SectionConsidered:    "Experience",
+					HumanOverrideAllowed: true,
+				})
+				continue
+			}
 			if srcID != "" && selectedRoles[srcID] {
 				excludeDuplicateRoleAnchor(excluded, c)
 				continue
@@ -195,7 +206,7 @@ func selectForResume(candidates []claims.Claim, req PlanRequest, scores map[stri
 			hasParent := false
 			parentID := ""
 			for _, sid := range c.SourceObjectIDs {
-				if selectedRoles[sid] {
+				if plannedRoleSources[sid] {
 					hasParent = true
 					parentID = sid
 					break
@@ -285,6 +296,27 @@ func selectForResume(candidates []claims.Claim, req PlanRequest, scores map[stri
 		}
 	}
 	return selected
+}
+
+func plannedResumeRoleSources(candidates []claims.Claim, maxRoles int, roleSources map[string]bool) map[string]bool {
+	planned := make(map[string]bool)
+	for _, candidate := range candidates {
+		if candidate.Kind != claims.KindRole && candidate.Kind != claims.KindEmployment {
+			continue
+		}
+		sourceID := primarySourceID(candidate)
+		if sourceID == "" || planned[sourceID] {
+			continue
+		}
+		if candidate.Kind == claims.KindEmployment && roleSources[sourceID] {
+			continue
+		}
+		if len(planned) >= maxRoles {
+			continue
+		}
+		planned[sourceID] = true
+	}
+	return planned
 }
 
 func selectForCV(candidates []claims.Claim, req PlanRequest, scores map[string]int, overrides map[claims.ClaimID]Override, excluded *[]ExcludedClaim) []PlannedClaim {

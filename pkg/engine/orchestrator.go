@@ -35,7 +35,9 @@ type Orchestrator struct {
 	stopOnce    sync.Once
 	jobs        chan string
 	pendingMu   sync.Mutex
-	pending     map[string]struct{}
+	// pending tracks queued or active paths. A true value means another event
+	// arrived while the path was pending and requires one follow-up pass.
+	pending     map[string]bool
 	workers     sync.WaitGroup
 	tier        string
 	application ApplicationConfig
@@ -78,7 +80,7 @@ func NewOrchestratorWithConcurrency(vaultPath string, generator IntelGenerator, 
 		ctx:         ctx,
 		cancel:      cancel,
 		jobs:        make(chan string, jobQueueSize),
-		pending:     make(map[string]struct{}),
+		pending:     make(map[string]bool),
 		tier:        "auto",
 		publisher:   defaultPacketPublisher(),
 	}, nil
@@ -140,6 +142,9 @@ func (o *Orchestrator) watch() {
 			if !ok {
 				return
 			}
+			if o.isApplicationOutput(event.Name) {
+				continue
+			}
 			if event.Op&fsnotify.Create != 0 {
 				if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
 					if err := o.addWatches(event.Name); err != nil {
@@ -169,6 +174,9 @@ func (o *Orchestrator) addWatches(root string) error {
 		if err != nil {
 			return err
 		}
+		if entry.IsDir() && o.isApplicationOutput(path) {
+			return filepath.SkipDir
+		}
 		if entry.IsDir() {
 			if err := o.watcher.Add(path); err != nil {
 				return fmt.Errorf("watch %s: %w", path, err)
@@ -183,6 +191,9 @@ func (o *Orchestrator) processVault() error {
 		if err != nil {
 			return err
 		}
+		if entry.IsDir() && o.isApplicationOutput(path) {
+			return filepath.SkipDir
+		}
 		if !entry.IsDir() && strings.EqualFold(filepath.Ext(path), ".md") {
 			o.enqueue(path)
 		}
@@ -192,12 +203,16 @@ func (o *Orchestrator) processVault() error {
 
 func (o *Orchestrator) enqueue(path string) {
 	path = filepath.Clean(path)
+	if o.isApplicationOutput(path) {
+		return
+	}
 	o.pendingMu.Lock()
 	if _, exists := o.pending[path]; exists {
+		o.pending[path] = true
 		o.pendingMu.Unlock()
 		return
 	}
-	o.pending[path] = struct{}{}
+	o.pending[path] = false
 	o.pendingMu.Unlock()
 
 	select {
@@ -207,13 +222,22 @@ func (o *Orchestrator) enqueue(path string) {
 	}
 }
 
+func (o *Orchestrator) isApplicationOutput(path string) bool {
+	outputRoot := filepath.Join(filepath.Clean(o.vaultPath), "applications")
+	relative, err := filepath.Rel(outputRoot, filepath.Clean(path))
+	if err != nil {
+		return false
+	}
+	return relative == "." || relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
+}
+
 func (o *Orchestrator) processJobs() {
 	defer o.workers.Done()
 	for {
 		select {
 		case path := <-o.jobs:
 			o.handleFile(path)
-			o.clearPending(path)
+			o.finishPending(path)
 		case <-o.ctx.Done():
 			return
 		}
@@ -226,6 +250,24 @@ func (o *Orchestrator) clearPending(path string) {
 	o.pendingMu.Unlock()
 }
 
+func (o *Orchestrator) finishPending(path string) {
+	o.pendingMu.Lock()
+	dirty, exists := o.pending[path]
+	if !exists || !dirty {
+		delete(o.pending, path)
+		o.pendingMu.Unlock()
+		return
+	}
+	o.pending[path] = false
+	o.pendingMu.Unlock()
+
+	select {
+	case o.jobs <- path:
+	case <-o.ctx.Done():
+		o.clearPending(path)
+	}
+}
+
 func (o *Orchestrator) handleFile(path string) {
 	fileName := filepath.Base(path)
 	data, err := os.ReadFile(path)
@@ -236,6 +278,7 @@ func (o *Orchestrator) handleFile(path string) {
 
 	var job models.JobPost
 	if err := models.UnmarshalMarkdown(data, &job); err != nil {
+		log.Printf("[Error] [%s] Failed to parse job post: %v", fileName, err)
 		return
 	}
 	if job.Company == "" {

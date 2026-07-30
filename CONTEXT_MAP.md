@@ -72,4 +72,4 @@ Future changes must adhere strictly to these patterns:
 *   **Ollama Client Timeout & Failures**: Ollama runs locally and can be slow/stuck. The client uses a circuit breaker (tripping after 3 failures with a cooldown) and a 60-second request timeout limit.
 *   **VRAM Swapping Latency**: Swapping active models on limited hardware introduces latency. The manager unloads conflicting active models prior to local runs to prevent system thrashing.
 *   **Testing Discipline**: Tests must use temporary folders (`t.TempDir()`). Never point tests at a real Obsidian vault.
-*   **Phase 3 Remaining Alpha Risks**: Explicit state-transition enforcement, deterministic build identity, restart recovery, and the controlled private-CKB trial remain release gates in `PHASE3_STABILIZATION.md`.
+*   **Phase 3 Remaining Alpha Risks**: Explicit state-transition enforcement, deterministic build identity, restart recovery, portable packet-directory naming, and manual artifact/privacy review following the successful private-CKB generation trial remain release gates in `PHASE3_STABILIZATION.md`.

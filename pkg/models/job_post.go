@@ -3,10 +3,29 @@ package models
 import (
 	"bytes"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 )
+
+// SalaryAmount accepts the OpenHunt salary contract, which may contain either
+// an integer amount or a textual missing-value marker such as "unspecified".
+type SalaryAmount int
+
+func (s *SalaryAmount) UnmarshalYAML(node *yaml.Node) error {
+	value := strings.TrimSpace(node.Value)
+	if value == "" || strings.EqualFold(value, "unspecified") || strings.EqualFold(value, "unknown") || strings.EqualFold(value, "n/a") {
+		*s = 0
+		return nil
+	}
+	amount, err := strconv.Atoi(value)
+	if err != nil {
+		return fmt.Errorf("salary must be an integer or missing-value marker, got %q", value)
+	}
+	*s = SalaryAmount(amount)
+	return nil
+}
 
 // JobPost represents the core data structure for a job opportunity tracking state.
 // It maps to YAML frontmatter in Obsidian Markdown files.
@@ -16,8 +35,8 @@ type JobPost struct {
 	Title              string              `yaml:"title"`
 	Location           string              `yaml:"location"`
 	PostedAt           string              `yaml:"posted_at"`
-	SalaryMin          int                 `yaml:"salary_min"`
-	SalaryMax          int                 `yaml:"salary_max"`
+	SalaryMin          SalaryAmount        `yaml:"salary_min"`
+	SalaryMax          SalaryAmount        `yaml:"salary_max"`
 	RoleType           string              `yaml:"role_type"`
 	TechStack          []string            `yaml:"tech_stack"`
 	RegulatoryGates    []string            `yaml:"regulatory_gates"`

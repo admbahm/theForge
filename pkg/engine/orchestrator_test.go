@@ -246,6 +246,39 @@ func TestDuplicateEventsDoNotGenerateIntelTwice(t *testing.T) {
 	}
 }
 
+func TestEventWhilePathIsPendingGetsFollowUpPass(t *testing.T) {
+	vault := t.TempDir()
+	path := filepath.Join(vault, "job.md")
+	if err := os.WriteFile(path, []byte("---\ncompany: Example\nstate: new\n---\n\nBody\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	orchestrator, err := NewOrchestratorWithConcurrency(vault, &fakeIntelGenerator{intel: "unused"}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer orchestrator.Stop()
+
+	orchestrator.pendingMu.Lock()
+	orchestrator.pending[path] = false
+	orchestrator.pendingMu.Unlock()
+	orchestrator.enqueue(path)
+	orchestrator.finishPending(path)
+
+	select {
+	case got := <-orchestrator.jobs:
+		if got != path {
+			t.Fatalf("follow-up path = %q, want %q", got, path)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("event received while pending was not requeued")
+	}
+	orchestrator.finishPending(path)
+	if orchestrator.pendingCount() != 0 {
+		t.Fatalf("pending count = %d, want 0", orchestrator.pendingCount())
+	}
+}
+
 func TestConcurrentJobProcessing(t *testing.T) {
 	vault := t.TempDir()
 
@@ -368,7 +401,7 @@ func waitFor(t *testing.T, condition func() bool) {
 	t.Fatal("condition was not met before timeout")
 }
 
-func TestOrchestrator_ProcessApply(t *testing.T) {
+func TestOrchestratorProcessApplyWithOpenHuntMissingSalary(t *testing.T) {
 	// Create mock CKB directory
 	ckbDir := t.TempDir()
 	expDir := filepath.Join(ckbDir, "experience")
@@ -411,6 +444,8 @@ job_id: R123
 company: Stark Industries
 title: Principal DevOps Architect
 state: apply
+salary_min: unspecified
+salary_max: unspecified
 custom_field: preserved
 ---
 
@@ -593,5 +628,31 @@ func TestBlockingDiagnosticErrorReportsCodesWithoutPrivateMessages(t *testing.T)
 	}
 	if strings.Contains(message, "private evidence body") || strings.Contains(message, "another private value") {
 		t.Fatalf("error leaked diagnostic messages: %s", message)
+	}
+}
+
+func TestApplicationOutputsAreExcludedFromScanningAndQueueing(t *testing.T) {
+	vault := t.TempDir()
+	outputDir := filepath.Join(vault, "applications", "example-role")
+	if err := os.MkdirAll(outputDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	outputPath := filepath.Join(outputDir, "resume.md")
+	if err := os.WriteFile(outputPath, []byte("---\ncompany: Should Not Process\nstate: favorite\n---\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	generator := &fakeIntelGenerator{intel: "must not run"}
+	orchestrator, err := NewOrchestrator(vault, generator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer orchestrator.Stop()
+	if err := orchestrator.Start(); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(50 * time.Millisecond)
+	orchestrator.enqueue(outputPath)
+	if generator.calls.Load() != 0 || orchestrator.pendingCount() != 0 {
+		t.Fatalf("application output entered processing: calls=%d pending=%d", generator.calls.Load(), orchestrator.pendingCount())
 	}
 }

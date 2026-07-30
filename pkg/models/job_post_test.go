@@ -5,6 +5,46 @@ import (
 	"testing"
 )
 
+func TestUnmarshalMarkdownAcceptsOpenHuntSalaryValues(t *testing.T) {
+	tests := []struct {
+		name    string
+		minimum string
+		maximum string
+		wantMin SalaryAmount
+		wantMax SalaryAmount
+	}{
+		{name: "numeric amounts", minimum: "180000", maximum: "220000", wantMin: 180000, wantMax: 220000},
+		{name: "unspecified", minimum: "unspecified", maximum: "unspecified"},
+		{name: "other missing markers", minimum: "unknown", maximum: "n/a"},
+		{name: "empty quoted values", minimum: `""`, maximum: `""`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			input := []byte("---\ncompany: Apple\ntitle: Engineer\nstate: apply\nsalary_min: " + test.minimum + "\nsalary_max: " + test.maximum + "\n---\n\nBody\n")
+			var job JobPost
+			if err := UnmarshalMarkdown(input, &job); err != nil {
+				t.Fatalf("UnmarshalMarkdown() error = %v", err)
+			}
+			if job.SalaryMin != test.wantMin || job.SalaryMax != test.wantMax || job.State != "apply" {
+				t.Fatalf("unexpected parsed job: %+v", job)
+			}
+		})
+	}
+}
+
+func TestUnmarshalMarkdownRejectsInvalidSalary(t *testing.T) {
+	for _, value := range []string{"competitive", "100000.50", "true"} {
+		t.Run(value, func(t *testing.T) {
+			input := []byte("---\ncompany: Example\nsalary_min: " + value + "\n---\n")
+			var job JobPost
+			err := UnmarshalMarkdown(input, &job)
+			if err == nil || !strings.Contains(err.Error(), "salary must be an integer or missing-value marker") {
+				t.Fatalf("UnmarshalMarkdown() error = %v", err)
+			}
+		})
+	}
+}
+
 func TestUpdateStateAndAppendIntelPreservesUnknownFrontmatter(t *testing.T) {
 	input := []byte(`---
 job_id: R123
