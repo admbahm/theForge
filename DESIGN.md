@@ -18,6 +18,8 @@ Candidate-facing outputs must be traceable to verified source material:
 - Candidate preferences
 - Job description
 
+Conventional Markdown master resumes enter the evidence pipeline through the review-first `ckb import-resume` command. The importer creates Draft CKB records by default, removes contact email/phone fields, assigns deterministic IDs, validates the complete generated directory, and requires an explicit `-ready` pass into a new directory before StrictPublic artifact compilation.
+
 Agents may reframe, emphasize, summarize, and tailor verified evidence, but invention of candidate experience is forbidden. Agents must never fabricate employers, roles, dates, metrics, technologies, certifications, education, clearance status, citizenship, accomplishments, production experience, or direct experience with a requirement that is not supported by the candidate knowledge base.
 
 If a job requirement is unsupported, the system must identify it as a gap or clearly framed transferable skill. A posting that requires AWS cannot become an AWS production claim when the candidate evidence only shows GCP, Kubernetes, and Terraform. Missing metrics must stay missing: no invented percentages, dollar amounts, team sizes, uptime claims, or incident-reduction numbers.
@@ -44,7 +46,7 @@ Unlike traditional systems that rely on a centralized SQL or NoSQL database, The
 ### Phase 3: Evidence Planning & Artifact Compilation (Integrated Alpha)
 - **Implemented**: Parse and validate a CKB, extract and authorize claims, build deterministic artifact plans, compile Markdown resumes and cover letters, preserve the source job note, and transition `apply` to `completed` after generation.
 - **Current Boundary**: Planning uses structured target fields such as role, company, and technologies. Deep semantic requirement-to-evidence matching and explicit direct/transferable/gap output are not yet complete.
-- **Stabilization Status**: Fail-closed identity/CKB configuration, blocking diagnostics, transactional packet publication, and network-independent verification are implemented. Restart-safe state/idempotency behavior and the controlled trial remain release gates.
+- **Stabilization Status**: Fail-closed identity/CKB configuration, blocking diagnostics, transactional packet publication, network-independent verification, review-first master-resume import, and a successful real-vault multi-job generation run are implemented. Restart-safe state/idempotency behavior, portable packet-directory naming, and manual controlled-trial artifact/privacy review remain release gates.
 - **Planned Outputs**: Recruiter outreach, interview preparation, structured match/gap analysis, candidate follow-up questions, and additional export formats.
 - **Release Gate**: The application pipeline remains alpha until `PHASE3_STABILIZATION.md` is complete.
 

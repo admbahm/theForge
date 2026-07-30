@@ -11,8 +11,10 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/admbahm/theForge/ckb/export"
+	"github.com/admbahm/theForge/ckb/importer"
 	"github.com/admbahm/theForge/ckb/model"
 	"github.com/admbahm/theForge/ckb/parser"
 	"github.com/admbahm/theForge/ckb/planning"
@@ -138,19 +140,52 @@ func run(ctx context.Context, cfg config.Config, tier string) error {
 
 func handleCKBCommand(args []string) {
 	if len(args) == 0 {
-		log.Fatal("ckb command requires a subcommand: validate, export, or plan")
+		log.Fatal("ckb command requires a subcommand: validate, import-resume, export, or plan")
 	}
 
 	subCmd := args[0]
 	switch subCmd {
 	case "validate":
 		runCKBValidate(args[1:])
+	case "import-resume":
+		runCKBImportResume(args[1:])
 	case "export":
 		runCKBExport(args[1:])
 	case "plan":
 		runCKBPlan(args[1:])
 	default:
-		log.Fatalf("Unknown ckb subcommand %q. Supported: validate, export, plan", subCmd)
+		log.Fatalf("Unknown ckb subcommand %q. Supported: validate, import-resume, export, plan", subCmd)
+	}
+}
+
+func runCKBImportResume(args []string) {
+	fs := flag.NewFlagSet("ckb import-resume", flag.ExitOnError)
+	sourceFlag := fs.String("source", "", "Path to a Markdown master resume")
+	outputFlag := fs.String("output", "", "New directory for the generated CKB")
+	readyFlag := fs.Bool("ready", false, "Generate Active self-attested records after human review")
+	dateFlag := fs.String("date", time.Now().Format("2006-01-02"), "Last-updated date for imported records (YYYY-MM-DD)")
+	if err := fs.Parse(args); err != nil {
+		log.Fatal(err)
+	}
+	if *sourceFlag == "" || *outputFlag == "" {
+		log.Fatal("-source and -output are required")
+	}
+	lastUpdated, err := time.Parse("2006-01-02", *dateFlag)
+	if err != nil {
+		log.Fatalf("invalid -date: %v", err)
+	}
+	report, err := importer.Import(importer.Options{
+		SourcePath:  *sourceFlag,
+		OutputDir:   *outputFlag,
+		Ready:       *readyFlag,
+		LastUpdated: lastUpdated,
+	})
+	if err != nil {
+		log.Fatalf("import master resume: %v", err)
+	}
+	fmt.Printf("Imported %d experiences and %d projects into %s (ready=%t)\n", report.Experiences, report.Projects, *outputFlag, report.Ready)
+	for _, warning := range report.Warnings {
+		fmt.Printf("[REVIEW] %s\n", warning)
 	}
 }
 

@@ -16,7 +16,7 @@
 
 The Forge monitors your Obsidian vault for job postings ingested by "OpenHunt". It tracks each application through frontmatter metadata, generates job intelligence, and can compile deterministic resumes and cover letters from a validated Career Knowledge Base (CKB). **Ollama** running **Gemma 4** remains the default local provider, so the normal intelligence workflow requires no paid API key.
 
-Phase 3 is currently an **integrated alpha**. Fail-closed configuration, diagnostic enforcement, hermetic verification, and transactional packet publication are implemented. It is not considered production-safe until explicit state/idempotency recovery and the controlled-trial gates in [`PHASE3_STABILIZATION.md`](PHASE3_STABILIZATION.md) are complete.
+Phase 3 is currently an **integrated alpha**. Fail-closed configuration, diagnostic enforcement, hermetic verification, transactional packet publication, review-first master-resume import, and a successful multi-job real-vault generation trial are implemented. It is not considered production-safe until explicit state/idempotency recovery and the remaining controlled-trial review gates in [`PHASE3_STABILIZATION.md`](PHASE3_STABILIZATION.md) are complete.
 
 The Forge is not a generic resume generator and is not intended for application spam. Its product direction is quality over volume: help candidates apply to fewer roles with stronger precision, stronger verified evidence, and better preparation.
 
@@ -290,11 +290,40 @@ Tailored resumes (`resume.md`), cover letters (`cover_letter.md`), and a determi
 <vault_path>/applications/<company>-<role>/
 ```
 
+Packet directory names are derived deterministically from the company and role. The current alpha sanitizer can retain punctuation, Markdown-significant characters, and Unicode dashes from job titles. Review paths before using them in shell commands; portable, collision-resistant packet naming is a remaining stabilization item.
+
 ---
 
 ## Career Knowledge Base (CKB) CLI Commands
 
 You can run diagnostics and query your Career Knowledge Base directly using the `ckb` subcommand group:
+
+### Importing a Markdown Master Resume
+
+The Forge can convert a conventionally structured Markdown master resume into a new CKB directory. The source file is read-only, contact email and phone fields are removed, generated files are validated before publication, and an existing output directory is never overwritten.
+
+The baseline importer expects recognizable top-level headings such as `PROFESSIONAL SUMMARY`, `CORE COMPETENCIES`, `PROFESSIONAL EXPERIENCE`, `PLATFORM, CLOUD & AI PROJECTS`, `EDUCATION`, and `CERTIFICATIONS`. Each experience should use an organization heading followed by a role heading, duration, optional location/mission text, and achievement subsections. It performs deterministic structural conversion without an LLM.
+
+First create a review-only CKB. Imported records are `Draft` and cannot be used for public artifacts:
+
+```sh
+go run ./cmd/theforge ckb import-resume \
+  -source "/path/to/master-resume.md" \
+  -output "/path/to/ckb-review"
+```
+
+Review the generated experience, skill, project, education, credential, and profile records plus `import-report.json`. After correcting the master resume or importer output as needed, create a separate active CKB with the explicit review gate:
+
+```sh
+go run ./cmd/theforge ckb import-resume \
+  -source "/path/to/master-resume.md" \
+  -output "/path/to/ckb-ready" \
+  -ready
+
+go run ./cmd/theforge ckb validate -dir "/path/to/ckb-ready"
+```
+
+Point `THEFORGE_CKB_DIR` at the validated ready directory. Imported facts are marked `Self-Attested`; the importer does not invent metrics, evidence, proficiency, dates, or missing candidate facts.
 
 ### 1. Validate CKB
 Scan and report diagnostics (warnings and errors) for schema validation, evidence matching, and chronology gaps in your CKB directory:

@@ -102,6 +102,7 @@ State handling is distributed through conditional logic, and duplicate events ar
 - A restart at every modeled failure boundary converges to a valid packet and correct state.
 - Invalid or backward transitions are rejected and logged without modifying the note.
 - Application output files do not recursively enter the job-processing pipeline.
+- Packet directory names are portable, shell-safe, deterministic, and collision-resistant even when source titles contain punctuation or Unicode.
 
 ## Workstream 5: Hermetic Verification and Operational Observability
 
@@ -128,6 +129,8 @@ The complete test suite currently contains a provider-construction test that per
 
 ## Workstream 6: Documentation and Controlled Alpha Trial
 
+**Status: Operational multi-job trial complete; manual artifact, provenance, privacy, and permissions review remains open.**
+
 ### Work
 
 - Keep `README.md`, `DESIGN.md`, `ARCHITECTURE.md`, `ROADMAP.md`, `CONTEXT_MAP.md`, `.agents/AGENTS.md`, and `HANDOFF.md` aligned with implemented behavior.
@@ -135,12 +138,14 @@ The complete test suite currently contains a provider-construction test that per
 - Run the complete workflow against a disposable vault and a private representative CKB.
 - Manually review the generated resume, cover letter, manifest, provenance, gaps, permissions, and source-note preservation.
 - Record trial findings without committing private candidate or job data.
+- Normalize packet directory components so punctuation, Markdown-significant characters, Unicode dashes, traversal sequences, and collisions cannot produce awkward or unsafe output paths.
 
 ### Acceptance Criteria
 
 - No documentation describes alpha behavior as production-ready or implemented behavior as merely planned.
 - A new user can configure a private CKB and run a dry run without relying on repository examples.
 - The controlled trial completes with no invented claim, private-evidence leak, partial packet, or incorrect state transition.
+- Generated packet paths are portable across supported filesystems and safe to copy into shells or Markdown without escaping surprises.
 
 ## Recommended Sequence
 

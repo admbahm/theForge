@@ -7,8 +7,9 @@ These rules apply to all work in this repository.
 - Treat The Forge as a local-first Go application that uses Markdown files with YAML frontmatter as its state store.
 - Keep the Obsidian vault human-readable and usable without The Forge running.
 - Treat The Forge as a career intelligence system for ethical, evidence-based AI-assisted job applications, not as a generic resume generator.
-- Distinguish implemented behavior from planned behavior. The multi-tier intelligence funnel, CKB parsing/validation, deterministic claim planning and rendering, and the `apply` to `completed` resume/cover-letter path are implemented. Phase 3 remains an integrated alpha until the stabilization gates in `PHASE3_STABILIZATION.md` are complete. Semantic requirement mapping, transactional packet publication, additional packet artifacts, and LLM-assisted refinement remain planned.
+- Distinguish implemented behavior from planned behavior. The multi-tier intelligence funnel, review-first Markdown master-resume import, CKB parsing/validation, deterministic claim planning and rendering, transactional packet publication, and the `apply` to `completed` resume/cover-letter path are implemented. Phase 3 remains an integrated alpha until the remaining stabilization gates in `PHASE3_STABILIZATION.md` are complete. Semantic requirement mapping, additional packet artifacts, and LLM-assisted refinement remain planned.
 - Maintain compatibility with the OpenHunt frontmatter contract documented in `README.md` and `DESIGN.md`.
+- Treat packet directory names as an external filesystem contract: normalize unsafe punctuation and Unicode, prevent traversal/hidden paths, and test deterministic collision handling before changing naming behavior.
 
 ## Evidence and Product Rules
 

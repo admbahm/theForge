@@ -2,71 +2,58 @@
 
 ## 1. Branch and Git Status
 
-- **Active Branch**: `codex/phase3-stabilization`
-- **Base**: `main`
-- **Working Tree**: Clean at the Workstream 2/3 checkpoint when this handoff was written.
-- **Checkpoint Scope**: Evidence regressions and transactional application packet publication with deterministic manifests and rollback coverage.
+- **Active Branch**: `codex/master-resume-importer`
+- **Base**: merged `main` at `2b876b9`
+- **Checkpoint Scope**: Master-resume import, planner ordering, watcher/output isolation, OpenHunt salary compatibility, regression tests, real-vault trial findings, and aligned documentation.
 
 ## 2. Active Goal and Objectives
 
-Complete the release gates in `PHASE3_STABILIZATION.md` so the `apply` to `completed` application pipeline can be used safely with a private, real-world Career Knowledge Base.
-
-The stabilization sequence is:
-
-1. Establish hermetic test, race, and vet gates.
-2. Fail closed on missing/example CKB and identity configuration.
-3. Enforce blocking diagnostics from every compilation stage.
-4. Publish application packets transactionally with a manifest.
-5. Formalize state transitions, idempotency, and restart recovery.
-6. Complete a controlled disposable-vault trial and align documentation.
+Close the missing boundary between a conventional Markdown master resume and The Forge's validated Career Knowledge Base so real resume and cover-letter compilation can begin under a human review gate.
 
 ## 3. Work Completed
 
-- Created `codex/phase3-stabilization` from `main`.
-- Removed Ollama model-availability network I/O from `llm.NewClient`; runtime connectivity remains checked explicitly by `run` for the local and auto tiers.
-- Replaced the Gemini factory test's live API request with structural assertions that verify provider type, configured model, and environment-sourced API key.
-- Established passing network-independent test, race, and vet gates.
-- Added YAML and environment configuration for a private application CKB, demo mode, and candidate contact identity, with environment values taking precedence.
-- Resolve and validate a configured CKB during startup; reject the bundled fictional CKB unless explicit demo mode is enabled.
-- Removed the implicit `./ckb` and `Tony Stark` fallbacks from application processing.
-- Require candidate name and email before any public resume or cover letter can be published.
-- Leave rejected jobs byte-for-byte unchanged in `state: apply` and create no application output directory.
-- Add an unmistakable fictional-data warning to every demo resume and cover letter.
-- Added a startup preflight report for the vault, CKB status, output root, provider, tier, and demo mode without printing candidate evidence.
-- Documented safe private application configuration in the examples and README.
-- Centralized blocking diagnostic severity and stable-code extraction in `ckb/model`.
-- Enforced parser, resume/cover-letter planner, and resume/cover-letter renderer error/fatal diagnostics before artifact publication, even when a stage returns a non-nil plan or artifact.
-- Restricted orchestration errors to stable diagnostic codes so private evidence and diagnostic message bodies are not copied into operational logs.
-- Added explicit regressions proving AWS remains a gap when only GCP/Kubernetes/Terraform evidence exists and missing source metrics are not invented during planning/rendering.
-- Replaced direct artifact writes with secure same-filesystem packet staging and publication.
-- Sync every staged artifact, the deterministic manifest, and staging directory before publication.
-- Added `manifest.json` with SHA-256 file digests, sizes, artifact content digests, provenance references, warning codes, source-job identity, schema/compiler versions, and demo status.
-- Publish packets by directory rename with rollback to the previous complete packet when replacement fails.
-- Use `0700` packet directories and `0600` packet files.
-- Added failure-injection coverage for file writes, staging-directory sync, initial publication rename, and replacement rollback.
-- Updated project documentation to reflect completed Workstreams 1–3 accurately.
+- Added `theforge ckb import-resume -source ... -output ...`.
+- Import is deterministic, local-only, source-read-only, atomic, and refuses to overwrite an existing output directory.
+- Default output records are `Draft`; `-ready` explicitly creates `Active`, `Self-Attested`, 0.85-confidence records after review.
+- Removes email and phone values and reports that contact fields must be configured separately.
+- Generates stable experience/project IDs plus skills, education, credentials, profile, and `import-report.json` records.
+- Normalizes English month/year role durations to the CKB `YYYY-MM` contract.
+- Validates the complete staged CKB with strict privacy checks before publication.
+- Fixed resume planning so accomplishments are associated with the selected role set independent of candidate sort order.
+- Excluded `<vault>/applications` from initial scans, recursive watches, and queueing after end-to-end testing observed staged artifact events.
+- Fixed watcher queue coalescing so a save received while a note is queued or processing schedules one follow-up pass instead of being lost.
+- Made salary parsing compatible with OpenHunt's numeric or `unspecified` values and surfaced Markdown parse failures in watcher logs.
+- Added table-driven salary contract tests plus an end-to-end orchestrator regression proving an OpenHunt `apply` note with textual missing salaries publishes both application artifacts and reaches `completed`.
+- Added importer, planner integration, privacy, no-overwrite, review/ready, accomplishment-selection, date, and output-recursion tests.
+- Documented the importer workflow and updated roadmap/design/agent scope.
 
-## 4. Immediate Next Steps
+## 4. Real-Source Verification
 
-Begin Workstream 4, explicit state machine, idempotency, and recovery:
+- Imported the real master-resume structure read-only into `/tmp`: 5 experiences and 3 projects.
+- Both Draft and `-ready` imports passed strict CKB validation.
+- Planned the Apple Camera Tuning job against the ready temporary CKB.
+- The final plan selected 3 dated roles, 12 source accomplishments, and 10 source skills while retaining target and missing-metric warnings.
+- A temporary end-to-end watcher run published `resume.md`, `cover_letter.md`, and `manifest.json`, then advanced the copied job to `state: completed`.
+- A subsequent live-vault run imported the reviewed private master-resume CKB and concurrently generated separate packets for five real Apple `apply` notes, advancing each successfully processed note to `completed`.
+- The live run exposed awkward packet directory names when titles contained `&`, commas, Markdown-significant punctuation, and Unicode dashes; portable collision-resistant sanitization remains open.
+- Disposable verification did not modify Downloads or the Obsidian vault; the later live run was user-initiated and intentionally wrote application packets and state transitions.
 
-1. Define allowed transitions and reject invalid/backward transitions without modifying notes.
-2. Derive a deterministic application build identity from job input, CKB snapshot, policy, and compiler version.
-3. Record the build identity in `manifest.json` and detect an identical published packet.
-4. Complete `state: apply` to `completed` idempotently after a restart that occurs after packet publication but before note advancement.
-5. Add restart/failure-boundary and output-recursion tests.
+## 5. Immediate Next Steps
 
-## 5. Pending Decisions and Blockers
+1. Implement portable, collision-resistant packet directory naming with migration/compatibility tests.
+2. Manually review live-trial claims, provenance, warnings, privacy, permissions, and source-note preservation.
+3. Continue Phase 3 deterministic build identity and restart recovery.
 
-- Packet replacement currently preserves the previous packet during publication and removes it after the new packet and parent directory are synced. Long-term packet history/version retention remains undecided.
-- Recoverable build failures currently leave `state: apply` unchanged and log an actionable error; a persistent diagnostic record remains undecided.
-- No current implementation blocker.
+## 6. Pending Boundaries
 
-## 6. Validation Status
+- The importer is a deterministic heading-based baseline, not a DOCX/PDF or arbitrary-layout parser.
+- Imported facts are self-attested; it does not infer evidence, proficiency, metrics, or missing facts.
+- Deep job-requirement semantic matching remains planned.
+- Current packet directory sanitization retains punctuation and Unicode that are legal on macOS but awkward in shells, Markdown, and cross-platform workflows.
 
-Run with `GOCACHE=/tmp/theforge-go-cache` because the default cache is not writable in the managed environment:
+## 7. Validation Status
 
 - `go test ./...`: passes.
 - `go test -race ./...`: passes.
 - `go vet ./...`: passes.
-- No test requires network access, Ollama, API keys, or a real vault.
+- `git diff --check`: passes.

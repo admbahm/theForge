@@ -53,3 +53,5 @@ go vet ./...
 ## 4. Phase 3 Changes
 
 Work that changes CKB planning, public artifact rendering, application packet publication, or the `apply` to `completed` transition must satisfy the relevant acceptance criteria in [`PHASE3_STABILIZATION.md`](PHASE3_STABILIZATION.md). In particular, blocking diagnostics must fail closed, every public claim must retain provenance, and tests must include unsupported-requirement and missing-metric cases.
+
+Packet directory components are external filesystem identifiers. Changes to their derivation must normalize or remove shell/Markdown-significant punctuation and platform-sensitive Unicode, prevent traversal and hidden names, define deterministic collision behavior, and include portability regression tests.

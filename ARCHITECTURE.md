@@ -55,7 +55,7 @@ graph TD
 *   `internal/ollama/client.go`
     *   **Responsibility**: Implements the provider-neutral client contract. Wraps HTTP queries to the local Ollama API (specifically `/api/generate` default endpoint), sets generation parameters (like low temperature for predictability), constructs structured prompts, and cleans output code blocks.
 *   `pkg/engine/orchestrator.go`
-    *   **Responsibility**: Implements recursive filesystem directory watching via `fsnotify` and coordinates vault scanning. Workers perform intelligence transitions or, for `state: apply`, invoke the CKB planning/rendering pipeline and write a resume and cover letter. A pending/in-flight set coalesces event storms by filepath.
+    *   **Responsibility**: Implements recursive filesystem directory watching via `fsnotify` and coordinates vault scanning. Workers perform intelligence transitions or, for `state: apply`, invoke the CKB planning/rendering pipeline and write a resume and cover letter. A pending/in-flight set coalesces event storms by filepath while retaining one follow-up pass when a save arrives during queued or active processing.
 *   `pkg/models/job_post.go`
     *   **Responsibility**: Defines the core schema (`JobPost` struct). Provides helpers to separate YAML frontmatter metadata from the Markdown body (`splitMarkdown`), parses structures, and updates individual state properties using low-level YAML AST mapping.
 
@@ -160,4 +160,4 @@ graph TD
 
 ### Stabilization Boundary
 
-Phase 3 is not production-ready. Unsafe CKB/identity defaults, blocking diagnostic enforcement, hermetic tests, and transactional packet publication have been addressed. Explicit state transitions, deterministic build identity, restart recovery, and the controlled private-CKB trial remain release gates in [`PHASE3_STABILIZATION.md`](PHASE3_STABILIZATION.md).
+Phase 3 is not production-ready. Unsafe CKB/identity defaults, blocking diagnostic enforcement, hermetic tests, transactional packet publication, master-resume import, and operational multi-job generation against a private CKB have been addressed. Explicit state transitions, deterministic build identity, restart recovery, portable packet-directory naming, and manual review of controlled-trial artifacts/privacy remain release gates in [`PHASE3_STABILIZATION.md`](PHASE3_STABILIZATION.md).
