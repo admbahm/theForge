@@ -4,8 +4,8 @@
 
 - **Active Branch**: `codex/phase3-stabilization`
 - **Base**: `main`
-- **Working Tree**: Clean at the stabilization checkpoint when this handoff was written.
-- **Checkpoint Scope**: Hermetic provider tests, fail-closed application configuration, explicit demo safeguards, and centralized blocking diagnostic enforcement.
+- **Working Tree**: Clean at the Workstream 2/3 checkpoint when this handoff was written.
+- **Checkpoint Scope**: Evidence regressions and transactional application packet publication with deterministic manifests and rollback coverage.
 
 ## 2. Active Goal and Objectives
 
@@ -37,20 +37,29 @@ The stabilization sequence is:
 - Centralized blocking diagnostic severity and stable-code extraction in `ckb/model`.
 - Enforced parser, resume/cover-letter planner, and resume/cover-letter renderer error/fatal diagnostics before artifact publication, even when a stage returns a non-nil plan or artifact.
 - Restricted orchestration errors to stable diagnostic codes so private evidence and diagnostic message bodies are not copied into operational logs.
+- Added explicit regressions proving AWS remains a gap when only GCP/Kubernetes/Terraform evidence exists and missing source metrics are not invented during planning/rendering.
+- Replaced direct artifact writes with secure same-filesystem packet staging and publication.
+- Sync every staged artifact, the deterministic manifest, and staging directory before publication.
+- Added `manifest.json` with SHA-256 file digests, sizes, artifact content digests, provenance references, warning codes, source-job identity, schema/compiler versions, and demo status.
+- Publish packets by directory rename with rollback to the previous complete packet when replacement fails.
+- Use `0700` packet directories and `0600` packet files.
+- Added failure-injection coverage for file writes, staging-directory sync, initial publication rename, and replacement rollback.
+- Updated project documentation to reflect completed Workstreams 1–3 accurately.
 
 ## 4. Immediate Next Steps
 
-Complete the remaining diagnostic regression coverage, then begin Workstream 3:
+Begin Workstream 4, explicit state machine, idempotency, and recovery:
 
-1. Add an explicit AWS-required / GCP-Kubernetes-Terraform-only regression that proves AWS cannot become a direct claim.
-2. Add a missing-source-metric regression at the complete planning/rendering boundary.
-3. Carry publishable warning diagnostics into Workstream 3's packet manifest.
-4. Design and implement same-filesystem staged packet publication with digests and atomic replacement semantics.
+1. Define allowed transitions and reject invalid/backward transitions without modifying notes.
+2. Derive a deterministic application build identity from job input, CKB snapshot, policy, and compiler version.
+3. Record the build identity in `manifest.json` and detect an identical published packet.
+4. Complete `state: apply` to `completed` idempotently after a restart that occurs after packet publication but before note advancement.
+5. Add restart/failure-boundary and output-recursion tests.
 
 ## 5. Pending Decisions and Blockers
 
-- Packet replacement/history semantics and recoverable failure representation remain open for later workstreams.
-- Warning diagnostics need a manifest destination; full warning publication depends on Workstream 3's packet manifest.
+- Packet replacement currently preserves the previous packet during publication and removes it after the new packet and parent directory are synced. Long-term packet history/version retention remains undecided.
+- Recoverable build failures currently leave `state: apply` unchanged and log an actionable error; a persistent diagnostic record remains undecided.
 - No current implementation blocker.
 
 ## 6. Validation Status

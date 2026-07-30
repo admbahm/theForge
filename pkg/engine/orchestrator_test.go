@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -468,12 +469,33 @@ Existing intelligence.
 	appDir := filepath.Join(vault, "applications", "stark_industries-principal_devops_architect")
 	resumePath := filepath.Join(appDir, "resume.md")
 	clPath := filepath.Join(appDir, "cover_letter.md")
+	manifestPath := filepath.Join(appDir, "manifest.json")
 
 	if _, err := os.Stat(resumePath); os.IsNotExist(err) {
 		t.Fatal("Resume artifact was not generated")
 	}
 	if _, err := os.Stat(clPath); os.IsNotExist(err) {
 		t.Fatal("Cover letter artifact was not generated")
+	}
+	manifestData, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatalf("Packet manifest was not generated: %v", err)
+	}
+	var manifest packetManifest
+	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+		t.Fatalf("Packet manifest is invalid: %v", err)
+	}
+	if manifest.Job.JobID != "R123" || !manifest.DemoMode || len(manifest.Files) != 2 {
+		t.Fatalf("Unexpected packet manifest: %+v", manifest)
+	}
+	for _, file := range manifest.Files {
+		data, err := os.ReadFile(filepath.Join(appDir, file.Name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if file.SHA256 != digestBytes(data) {
+			t.Fatalf("Manifest digest mismatch for %s", file.Name)
+		}
 	}
 
 	resumeData, err := os.ReadFile(resumePath)

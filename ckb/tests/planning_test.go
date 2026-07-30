@@ -328,6 +328,111 @@ Prose after the table.`,
 	}
 }
 
+func TestUnsupportedAWSRemainsGapWithOnlyTransferableCloudEvidence(t *testing.T) {
+	kb := model.NewKnowledgeBase()
+	kb.Objects["skill:cloud-transferable"] = skillMatrixObject("skill:cloud-transferable", []model.Section{
+		{
+			Heading: "### Cloud Platform Skills",
+			Body: `| Skill Name | Proficiency | Confidence | Years | Last Used | Related Experience | Related Projects | Supporting Evidence |
+| :--- | :--- | :---: | :---: | :---: | :--- | :--- | :--- |
+| **GCP** | Advanced | 0.95 | 5 | Present | None | None | [ev:gcp-public](./evidence.md) |
+| **Kubernetes** | Advanced | 0.95 | 5 | Present | None | None | [ev:k8s-public](./evidence.md) |
+| **Terraform** | Advanced | 0.95 | 5 | Present | None | None | [ev:terraform-public](./evidence.md) |`,
+		},
+	})
+	kb.Objects["ev:gcp-public"] = evidenceObject("ev:gcp-public", model.VisibilityPublic)
+	kb.Objects["ev:k8s-public"] = evidenceObject("ev:k8s-public", model.VisibilityPublic)
+	kb.Objects["ev:terraform-public"] = evidenceObject("ev:terraform-public", model.VisibilityPublic)
+
+	planRes := planning.BuildPlan(context.Background(), kb, planning.PlanRequest{
+		ArtifactType: planning.TypeResume,
+		PolicyID:     planning.PolicyStrictPublic,
+		Target: &planning.TargetProfile{
+			DesiredTechnologies: []string{"AWS"},
+		},
+		MaxSkills: 10,
+	})
+	if planRes.Plan == nil {
+		t.Fatalf("BuildPlan() returned nil: %+v", planRes.Diagnostics)
+	}
+	if !hasTargetGap(planRes.Plan.Gaps, "AWS") {
+		t.Fatalf("AWS requirement did not remain an explicit gap: %+v", planRes.Plan.Gaps)
+	}
+	for _, planned := range planRes.Plan.SelectedClaims {
+		if strings.Contains(strings.ToLower(planned.Claim.Statement), "aws") || strings.EqualFold(string(planned.Claim.Value), "AWS") {
+			t.Fatalf("unsupported AWS became a selected direct claim: %+v", planned.Claim)
+		}
+	}
+
+	renderRes := rendering.Render(context.Background(), rendering.RenderRequest{Plan: planRes.Plan})
+	if renderRes.Artifact == nil {
+		t.Fatalf("Render() returned nil: %+v", renderRes.Diagnostics)
+	}
+	var output bytes.Buffer
+	if err := export.ExportMarkdown(renderRes.Artifact, &output, export.MarkdownOptions{IncludeHeadings: true}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.ToLower(output.String()), "aws") {
+		t.Fatalf("unsupported AWS leaked into candidate-facing output:\n%s", output.String())
+	}
+}
+
+func TestMissingSourceMetricIsNotInventedDuringPlanningOrRendering(t *testing.T) {
+	kb := model.NewKnowledgeBase()
+	kb.Objects["exp:metricless"] = &model.Object{
+		ID:         "exp:metricless",
+		Type:       model.TypeExperience,
+		SourceFile: "experience/metricless.md",
+		Metadata: model.Metadata{
+			Status:       model.StatusActive,
+			Visibility:   model.VisibilityPublic,
+			Verification: model.VerificationIndependentlyVerified,
+			Confidence:   0.95,
+			Lifecycle:    model.LifecycleCompleted,
+		},
+		Sections: []model.Section{
+			{Heading: "## 1. Role Context", Body: "* **Organization**: Example Systems\n* **Role**: Platform Engineer\n* **Duration**: Present"},
+			{Heading: "## 2. Key Achievements", Body: "- Improved deployment reliability through safer release automation."},
+		},
+	}
+
+	planRes := planning.BuildPlan(context.Background(), kb, planning.PlanRequest{
+		ArtifactType:           planning.TypeCoverLetter,
+		PolicyID:               planning.PolicyStrictPublic,
+		MaxAchievementsPerRole: 3,
+	})
+	if planRes.Plan == nil {
+		t.Fatalf("BuildPlan() returned nil: %+v", planRes.Diagnostics)
+	}
+	metricGap := false
+	for _, gap := range planRes.Plan.Gaps {
+		if gap.Code == "CKB-PLAN-METRIC-OPPORTUNITY" {
+			metricGap = true
+		}
+	}
+	if !metricGap {
+		t.Fatalf("metricless accomplishment was not identified: gaps=%+v selected=%+v excluded=%+v", planRes.Plan.Gaps, planRes.Plan.SelectedClaims, planRes.Plan.ExcludedClaims)
+	}
+	renderRes := rendering.Render(context.Background(), rendering.RenderRequest{Plan: planRes.Plan})
+	if renderRes.Artifact == nil {
+		t.Fatalf("Render() returned nil: %+v", renderRes.Diagnostics)
+	}
+	found := false
+	for _, section := range renderRes.Artifact.Sections {
+		for _, entry := range section.Entries {
+			if strings.Contains(entry.Text, "Improved deployment reliability") {
+				found = true
+				if strings.ContainsAny(entry.Text, "%$") {
+					t.Fatalf("renderer invented a metric: %q", entry.Text)
+				}
+			}
+		}
+	}
+	if !found {
+		t.Fatal("metricless source accomplishment was not rendered")
+	}
+}
+
 func TestCredentialSubheadingsExtractIndividualClaimsAndRenderOnce(t *testing.T) {
 	kb := model.NewKnowledgeBase()
 	kb.Objects["cred:matrix"] = credentialObject("cred:matrix", []model.Section{

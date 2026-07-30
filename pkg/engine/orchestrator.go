@@ -1,11 +1,13 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
@@ -37,6 +39,7 @@ type Orchestrator struct {
 	workers     sync.WaitGroup
 	tier        string
 	application ApplicationConfig
+	publisher   packetPublisher
 }
 
 type ApplicationConfig struct {
@@ -77,6 +80,7 @@ func NewOrchestratorWithConcurrency(vaultPath string, generator IntelGenerator, 
 		jobs:        make(chan string, jobQueueSize),
 		pending:     make(map[string]struct{}),
 		tier:        "auto",
+		publisher:   defaultPacketPublisher(),
 	}, nil
 }
 
@@ -402,47 +406,88 @@ func (o *Orchestrator) processApply(path string, job models.JobPost) error {
 		return fmt.Errorf("cover letter rendering failed")
 	}
 
-	companySanitized := sanitizePathSegment(job.Company)
-	titleSanitized := sanitizePathSegment(job.Title)
-	appDir := filepath.Join(o.vaultPath, "applications", fmt.Sprintf("%s-%s", companySanitized, titleSanitized))
-	if err := os.MkdirAll(appDir, 0755); err != nil {
-		return fmt.Errorf("failed to create application dir: %w", err)
-	}
-
-	resumePath := filepath.Join(appDir, "resume.md")
-	resumeFile, err := os.Create(resumePath)
+	resumeBytes, err := renderArtifactMarkdown(resumeRenderRes.Artifact, o.application.DemoMode)
 	if err != nil {
-		return fmt.Errorf("failed to create resume file: %w", err)
+		return fmt.Errorf("export resume markdown: %w", err)
 	}
-	defer resumeFile.Close()
-	if o.application.DemoMode {
-		if _, err := resumeFile.WriteString("> **THE FORGE DEMO OUTPUT — FICTIONAL DATA — DO NOT SUBMIT**\n\n"); err != nil {
-			return fmt.Errorf("failed to mark demo resume: %w", err)
-		}
-	}
-
-	if err := export.ExportMarkdown(resumeRenderRes.Artifact, resumeFile, export.MarkdownOptions{IncludeHeadings: true}); err != nil {
-		return fmt.Errorf("failed to export resume markdown: %w", err)
-	}
-
-	clPath := filepath.Join(appDir, "cover_letter.md")
-	clFile, err := os.Create(clPath)
+	coverLetterBytes, err := renderArtifactMarkdown(clRenderRes.Artifact, o.application.DemoMode)
 	if err != nil {
-		return fmt.Errorf("failed to create cover letter file: %w", err)
-	}
-	defer clFile.Close()
-	if o.application.DemoMode {
-		if _, err := clFile.WriteString("> **THE FORGE DEMO OUTPUT — FICTIONAL DATA — DO NOT SUBMIT**\n\n"); err != nil {
-			return fmt.Errorf("failed to mark demo cover letter: %w", err)
-		}
+		return fmt.Errorf("export cover letter markdown: %w", err)
 	}
 
-	if err := export.ExportMarkdown(clRenderRes.Artifact, clFile, export.MarkdownOptions{IncludeHeadings: true}); err != nil {
-		return fmt.Errorf("failed to export cover letter markdown: %w", err)
+	packetName := fmt.Sprintf("%s-%s", sanitizePathSegment(job.Company), sanitizePathSegment(job.Title))
+	applicationsDir := filepath.Join(o.vaultPath, "applications")
+	packet := applicationPacket{
+		Files: map[string][]byte{
+			"cover_letter.md": coverLetterBytes,
+			"resume.md":       resumeBytes,
+		},
+		Manifest: packetManifest{
+			SchemaVersion:   packetSchemaVersion,
+			CompilerVersion: "theforge-phase3-alpha",
+			Job: packetJobIdentity{
+				JobID:   job.JobID,
+				Company: job.Company,
+				Title:   job.Title,
+			},
+			DemoMode: o.application.DemoMode,
+			Warnings: mergeWarningCodes(resumePlanRes.Diagnostics, clPlanRes.Diagnostics, resumeRenderRes.Diagnostics, clRenderRes.Diagnostics),
+			Files: []packetManifestFile{
+				manifestFileForArtifact("cover_letter.md", coverLetterBytes, clRenderRes.Artifact),
+				manifestFileForArtifact("resume.md", resumeBytes, resumeRenderRes.Artifact),
+			},
+		},
+	}
+	if err := o.publisher.publish(applicationsDir, packetName, packet); err != nil {
+		return fmt.Errorf("publish application packet: %w", err)
 	}
 
-	log.Printf("[Success] Tailored application materials generated at %s", appDir)
+	log.Printf("[Success] Tailored application packet generated at %s", filepath.Join(applicationsDir, packetName))
 	return nil
+}
+
+func renderArtifactMarkdown(artifact *rendering.Artifact, demoMode bool) ([]byte, error) {
+	var output bytes.Buffer
+	if demoMode {
+		output.WriteString("> **THE FORGE DEMO OUTPUT — FICTIONAL DATA — DO NOT SUBMIT**\n\n")
+	}
+	if err := export.ExportMarkdown(artifact, &output, export.MarkdownOptions{IncludeHeadings: true}); err != nil {
+		return nil, err
+	}
+	return output.Bytes(), nil
+}
+
+func manifestFileForArtifact(name string, data []byte, artifact *rendering.Artifact) packetManifestFile {
+	return packetManifestFile{
+		Name:               name,
+		ArtifactType:       string(artifact.Type),
+		SHA256:             digestBytes(data),
+		Size:               len(data),
+		ContentDigest:      artifact.Manifest.ContentDigest,
+		SourceReferences:   append([]string(nil), artifact.Manifest.SourceReferences...),
+		EvidenceReferences: append([]string(nil), artifact.Manifest.EvidenceReferences...),
+		Warnings:           append([]string(nil), artifact.Manifest.Warnings...),
+	}
+}
+
+func mergeWarningCodes(groups ...[]model.Diagnostic) []string {
+	seen := make(map[string]struct{})
+	var warnings []string
+	for _, diagnostics := range groups {
+		for _, diagnostic := range diagnostics {
+			if diagnostic.Severity != model.SeverityWarning {
+				continue
+			}
+			code := string(diagnostic.Code)
+			if _, exists := seen[code]; exists {
+				continue
+			}
+			seen[code] = struct{}{}
+			warnings = append(warnings, code)
+		}
+	}
+	sort.Strings(warnings)
+	return warnings
 }
 
 func blockingDiagnosticError(stage string, diagnostics []model.Diagnostic) error {

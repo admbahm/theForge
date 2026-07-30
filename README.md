@@ -16,7 +16,7 @@
 
 The Forge monitors your Obsidian vault for job postings ingested by "OpenHunt". It tracks each application through frontmatter metadata, generates job intelligence, and can compile deterministic resumes and cover letters from a validated Career Knowledge Base (CKB). **Ollama** running **Gemma 4** remains the default local provider, so the normal intelligence workflow requires no paid API key.
 
-Phase 3 is currently an **integrated alpha**. The `apply` to `completed` path exists and is covered by integration tests, but it is not considered production-safe until the fail-closed configuration, diagnostic enforcement, transactional packet publishing, and hermetic test gates in [`PHASE3_STABILIZATION.md`](PHASE3_STABILIZATION.md) are complete.
+Phase 3 is currently an **integrated alpha**. Fail-closed configuration, diagnostic enforcement, hermetic verification, and transactional packet publication are implemented. It is not considered production-safe until explicit state/idempotency recovery and the controlled-trial gates in [`PHASE3_STABILIZATION.md`](PHASE3_STABILIZATION.md) are complete.
 
 The Forge is not a generic resume generator and is not intended for application spam. Its product direction is quality over volume: help candidates apply to fewer roles with stronger precision, stronger verified evidence, and better preparation.
 
@@ -67,7 +67,7 @@ graph TD
     J --> K(Completed: #completed)
 ```
 
-The implemented processor supports `new` to `processed`, `favorite` to `intel-ready`, and `apply` to `completed`. The application path currently produces Markdown resumes and cover letters from authorized CKB claims. Deep semantic requirement mapping, recruiter outreach, interview preparation, structured match/gap exports, additional formats, and a fully transactional packet publisher remain planned.
+The implemented processor supports `new` to `processed`, `favorite` to `intel-ready`, and `apply` to `completed`. The application path transactionally publishes Markdown resumes, cover letters, and a digest/provenance manifest from authorized CKB claims. Deep semantic requirement mapping, recruiter outreach, interview preparation, structured match/gap exports, and additional formats remain planned.
 
 ## Project Structure
 
@@ -285,7 +285,7 @@ Demo resumes and cover letters receive a prominent `FICTIONAL DATA — DO NOT SU
 
 ### Output Location
 
-Tailored resumes (`resume.md`) and cover letters (`cover_letter.md`) are saved inside dedicated subfolders within your vault:
+Tailored resumes (`resume.md`), cover letters (`cover_letter.md`), and a deterministic `manifest.json` containing file digests, provenance references, warning codes, and source-job identity are published together inside dedicated subfolders within your vault:
 ```text
 <vault_path>/applications/<company>-<role>/
 ```
