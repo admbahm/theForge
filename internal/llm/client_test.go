@@ -44,9 +44,23 @@ func TestNewClientCreatesConfiguredProvider(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient() error = %v", err)
 	}
-	_, err = client.GenerateIntel(context.Background(), models.JobPost{})
-	if err == nil || !strings.Contains(err.Error(), "gemini error") {
-		t.Fatalf("GenerateIntel() error = %v, want invalid API key error", err)
+	router, ok := client.(*routingClient)
+	if !ok {
+		t.Fatalf("NewClient() type = %T, want *routingClient", client)
+	}
+	wrapper, ok := router.frontierClient.(*clientWrapper)
+	if !ok {
+		t.Fatalf("frontier client type = %T, want *clientWrapper", router.frontierClient)
+	}
+	gemini, ok := wrapper.Client.(*geminiClient)
+	if !ok {
+		t.Fatalf("wrapped frontier client type = %T, want *geminiClient", wrapper.Client)
+	}
+	if gemini.model != "custom-model" {
+		t.Fatalf("gemini model = %q, want custom-model", gemini.model)
+	}
+	if gemini.apiKey != "test-key" {
+		t.Fatal("gemini API key was not loaded from the configured environment variable")
 	}
 }
 

@@ -12,3 +12,16 @@ providers:
   gemini:
     api_key_env: GEMINI_API_KEY
     model: gemini-2.5-flash
+
+# Application artifacts fail closed unless a private CKB and candidate identity
+# are explicitly configured. Never point production use at the bundled ./ckb examples.
+application:
+  ckb_dir: /absolute/path/to/your/private/ckb
+  demo_mode: false
+  contact:
+    name: Your Name
+    email: you@example.com
+    phone: ""
+    address: ""
+    linkedin: ""
+    github: ""

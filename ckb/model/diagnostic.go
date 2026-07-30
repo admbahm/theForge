@@ -2,6 +2,7 @@ package model
 
 import (
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -79,6 +80,37 @@ type Diagnostic struct {
 	Section       string             `json:"section,omitempty"`
 	RelatedSource *SourceLocation    `json:"related_source,omitempty"`
 	Remediation   string             `json:"remediation,omitempty"`
+}
+
+// HasBlockingDiagnostics reports whether a compilation stage emitted an error
+// or fatal diagnostic. Candidate-facing artifacts must not be published when
+// this returns true, even if the stage also returned a non-nil result.
+func HasBlockingDiagnostics(diagnostics []Diagnostic) bool {
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Severity == SeverityError || diagnostic.Severity == SeverityFatal {
+			return true
+		}
+	}
+	return false
+}
+
+// BlockingDiagnosticCodes returns stable diagnostic identifiers without
+// exposing private diagnostic messages or evidence bodies in operational logs.
+func BlockingDiagnosticCodes(diagnostics []Diagnostic) []DiagnosticCode {
+	seen := make(map[DiagnosticCode]struct{})
+	var codes []DiagnosticCode
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Severity != SeverityError && diagnostic.Severity != SeverityFatal {
+			continue
+		}
+		if _, exists := seen[diagnostic.Code]; exists {
+			continue
+		}
+		seen[diagnostic.Code] = struct{}{}
+		codes = append(codes, diagnostic.Code)
+	}
+	sort.Slice(codes, func(i, j int) bool { return codes[i] < codes[j] })
+	return codes
 }
 
 // DiagnosticsSorter implements sort.Interface for deterministic diagnostic sorting.

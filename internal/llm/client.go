@@ -4,10 +4,8 @@ package llm
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/admbahm/theForge/internal/config"
 	"github.com/admbahm/theForge/internal/ollama"
@@ -128,15 +126,6 @@ func NewClient(cfg config.Config) (Client, error) {
 		return nil, fmt.Errorf("create local Ollama client: %w", err)
 	}
 
-	// Verify local model is pulled/available (2s timeout to avoid blocking startup)
-	verifyCtx, verifyCancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer verifyCancel()
-	if available, err := localClient.VerifyModelAvailability(verifyCtx, localModel); err == nil && !available {
-		log.Printf("[Warning] Local model %q is not pulled in Ollama. Run 'ollama pull %s' to download it.", localModel, localModel)
-	} else if err != nil {
-		log.Printf("[Warning] Failed to verify local Ollama model availability: %v (is Ollama running?)", err)
-	}
-
 	// 2. Initialize frontier client based on configured provider
 	provider := strings.ToLower(strings.TrimSpace(cfg.LLM.Provider))
 	if provider == "" {
@@ -204,4 +193,3 @@ func firstConfigured(values ...string) string {
 	}
 	return ""
 }
-

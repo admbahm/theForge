@@ -123,6 +123,54 @@ func TestLoadEnvironmentOverridesProviderYAML(t *testing.T) {
 	}
 }
 
+func TestLoadResolvesApplicationConfiguration(t *testing.T) {
+	outputDir := t.TempDir()
+	ckbDir := t.TempDir()
+	yamlPath := filepath.Join(t.TempDir(), "theforge.yaml")
+	content := "openhunt_output_dir: " + outputDir + "\napplication:\n  ckb_dir: " + ckbDir + "\n  contact:\n    name: YAML Name\n    email: yaml@example.com\n"
+	if err := os.WriteFile(yamlPath, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(openHuntOutputDirKey, "")
+	t.Setenv(contactNameKey, "Environment Name")
+
+	cfg, err := Load(filepath.Join(t.TempDir(), ".env"), yamlPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Application.CKBDir != ckbDir {
+		t.Fatalf("CKBDir = %q, want %q", cfg.Application.CKBDir, ckbDir)
+	}
+	if cfg.Application.Contact.Name != "Environment Name" || cfg.Application.Contact.Email != "yaml@example.com" {
+		t.Fatalf("Contact = %+v", cfg.Application.Contact)
+	}
+}
+
+func TestLoadRejectsInvalidApplicationCKB(t *testing.T) {
+	outputDir := t.TempDir()
+	t.Setenv(openHuntOutputDirKey, outputDir)
+	t.Setenv(ckbDirKey, filepath.Join(t.TempDir(), "missing"))
+
+	_, err := Load(filepath.Join(t.TempDir(), ".env"))
+	if err == nil || !strings.Contains(err.Error(), "validate THEFORGE_CKB_DIR") {
+		t.Fatalf("Load() error = %v, want CKB validation error", err)
+	}
+}
+
+func TestResolveApplicationConfigRejectsBundledExamplesWithoutDemoMode(t *testing.T) {
+	exampleDir := bundledExampleCKBDir()
+	cfg := Config{Application: ApplicationConfig{CKBDir: exampleDir}}
+
+	if err := resolveApplicationConfig(&cfg); err == nil || !strings.Contains(err.Error(), "bundled fictional example CKB") {
+		t.Fatalf("resolveApplicationConfig() error = %v, want example CKB rejection", err)
+	}
+
+	cfg.Application.DemoMode = true
+	if err := resolveApplicationConfig(&cfg); err != nil {
+		t.Fatalf("resolveApplicationConfig() demo error = %v", err)
+	}
+}
+
 func TestParseDotEnvLine(t *testing.T) {
 	tests := []struct {
 		name      string

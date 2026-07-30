@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/admbahm/theForge/ckb/model"
+	"github.com/admbahm/theForge/ckb/rendering"
 	"github.com/admbahm/theForge/pkg/models"
 )
 
@@ -400,11 +402,6 @@ func TestOrchestrator_ProcessApply(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Set ckb dir environment variable
-	t.Setenv("THEFORGE_CKB_DIR", ckbDir)
-	t.Setenv("THEFORGE_CONTACT_NAME", "Tony Stark")
-	t.Setenv("THEFORGE_CONTACT_EMAIL", "tony@stark.com")
-
 	// Create temporary vault
 	vault := t.TempDir()
 	path := filepath.Join(vault, "job.md")
@@ -435,6 +432,14 @@ Existing intelligence.
 		t.Fatal(err)
 	}
 	defer orchestrator.Stop()
+	orchestrator.SetApplicationConfig(ApplicationConfig{
+		CKBDir:   ckbDir,
+		DemoMode: true,
+		Contact: rendering.ContactInfo{
+			Name:  "Tony Stark",
+			Email: "tony@stark.com",
+		},
+	})
 
 	if err := orchestrator.Start(); err != nil {
 		t.Fatal(err)
@@ -478,6 +483,9 @@ Existing intelligence.
 	if !strings.Contains(string(resumeData), "# Tony Stark") {
 		t.Errorf("Resume missing name, got:\n%s", string(resumeData))
 	}
+	if !strings.Contains(string(resumeData), "THE FORGE DEMO OUTPUT") {
+		t.Fatalf("demo resume missing warning banner:\n%s", resumeData)
+	}
 
 	clData, err := os.ReadFile(clPath)
 	if err != nil {
@@ -488,5 +496,80 @@ Existing intelligence.
 	}
 	if !strings.Contains(string(clData), "Saved $1.2M in annual cloud spend.") {
 		t.Errorf("Cover letter missing accomplishment, got:\n%s", string(clData))
+	}
+	if !strings.Contains(string(clData), "THE FORGE DEMO OUTPUT") {
+		t.Fatalf("demo cover letter missing warning banner:\n%s", clData)
+	}
+}
+
+func TestApplyStateRemainsUnchangedWhenApplicationConfigurationIsMissing(t *testing.T) {
+	vault := t.TempDir()
+	path := filepath.Join(vault, "job.md")
+	input := "---\ncompany: Example\ntitle: Engineer\nstate: apply\n---\n\nJob body.\n"
+	if err := os.WriteFile(path, []byte(input), 0o640); err != nil {
+		t.Fatal(err)
+	}
+
+	orchestrator, err := NewOrchestrator(vault, &fakeIntelGenerator{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer orchestrator.Stop()
+	if err := orchestrator.Start(); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() bool { return orchestrator.pendingCount() == 0 })
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != input {
+		t.Fatalf("job note changed after rejected application build:\n%s", data)
+	}
+	if _, err := os.Stat(filepath.Join(vault, "applications")); !os.IsNotExist(err) {
+		t.Fatalf("applications directory exists after rejected build: %v", err)
+	}
+}
+
+func TestProcessApplyFailsClosedOnMissingApplicationConfiguration(t *testing.T) {
+	orchestrator, err := NewOrchestrator(t.TempDir(), &fakeIntelGenerator{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer orchestrator.Stop()
+
+	job := models.JobPost{Company: "Example", Title: "Engineer", State: "apply"}
+	if err := orchestrator.processApply("job.md", job); err == nil || !strings.Contains(err.Error(), "THEFORGE_CKB_DIR is required") {
+		t.Fatalf("processApply() error = %v, want missing CKB error", err)
+	}
+
+	orchestrator.SetApplicationConfig(ApplicationConfig{CKBDir: t.TempDir()})
+	if err := orchestrator.processApply("job.md", job); err == nil || !strings.Contains(err.Error(), "THEFORGE_CONTACT_NAME is required") {
+		t.Fatalf("processApply() error = %v, want missing name error", err)
+	}
+
+	orchestrator.SetApplicationConfig(ApplicationConfig{
+		CKBDir: t.TempDir(),
+		Contact: rendering.ContactInfo{
+			Name: "Candidate Name",
+		},
+	})
+	if err := orchestrator.processApply("job.md", job); err == nil || !strings.Contains(err.Error(), "THEFORGE_CONTACT_EMAIL is required") {
+		t.Fatalf("processApply() error = %v, want missing email error", err)
+	}
+}
+
+func TestBlockingDiagnosticErrorReportsCodesWithoutPrivateMessages(t *testing.T) {
+	err := blockingDiagnosticError("resume planning", []model.Diagnostic{
+		{Code: "CKB-PRIVATE-CANARY", Severity: model.SeverityFatal, Message: "private evidence body must not appear"},
+		{Code: "CKB-SECOND", Severity: model.SeverityError, Message: "another private value"},
+	})
+	message := err.Error()
+	if !strings.Contains(message, "CKB-PRIVATE-CANARY") || !strings.Contains(message, "CKB-SECOND") {
+		t.Fatalf("error missing diagnostic codes: %s", message)
+	}
+	if strings.Contains(message, "private evidence body") || strings.Contains(message, "another private value") {
+		t.Fatalf("error leaked diagnostic messages: %s", message)
 	}
 }
