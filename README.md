@@ -287,10 +287,10 @@ Demo resumes and cover letters receive a prominent `FICTIONAL DATA — DO NOT SU
 
 Tailored resumes (`resume.md`), cover letters (`cover_letter.md`), and a deterministic `manifest.json` containing file digests, provenance references, warning codes, and source-job identity are published together inside dedicated subfolders within your vault:
 ```text
-<vault_path>/applications/<company>-<role>/
+<vault_path>/applications/<company>-<role>-<identity-suffix>/
 ```
 
-Packet directory names are derived deterministically from the company and role. The current alpha sanitizer can retain punctuation, Markdown-significant characters, and Unicode dashes from job titles. Review paths before using them in shell commands; portable, collision-resistant packet naming is a remaining stabilization item.
+Packet directory names use a readable company/role prefix plus a deterministic identity suffix derived from the source note and job ID. This prevents distinct notes with identical company/title metadata from overwriting one another. The current alpha sanitizer can still retain punctuation, Markdown-significant characters, and Unicode dashes from job titles. Review paths before using them in shell commands; fully portable packet naming remains a stabilization item.
 
 ---
 
