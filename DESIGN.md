@@ -44,7 +44,7 @@ Unlike traditional systems that rely on a centralized SQL or NoSQL database, The
 - **State Transition**: Updates the file's frontmatter and content with the generated intel, moving the state to `intel-ready`.
 
 ### Phase 3: Evidence Planning & Artifact Compilation (Integrated Alpha)
-- **Implemented**: Parse and validate a CKB, extract and authorize claims, build deterministic artifact plans, compile Markdown resumes and cover letters, preserve the source job note, and transition `apply` to `completed` after generation.
+- **Implemented**: Parse and validate a CKB, extract and authorize claims, build deterministic artifact plans, compile Markdown resumes and cover letters with removable internal target-context callouts, preserve the source job note, and transition `apply` to `completed` after generation.
 - **Current Boundary**: Planning uses structured target fields such as role, company, and technologies. Deep semantic requirement-to-evidence matching and explicit direct/transferable/gap output are not yet complete.
 - **Stabilization Status**: Fail-closed identity/CKB configuration, blocking diagnostics, transactional packet publication, network-independent verification, review-first master-resume import, and a successful real-vault multi-job generation run are implemented. Restart-safe state/idempotency behavior, portable packet-directory naming, and manual controlled-trial artifact/privacy review remain release gates.
 - **Planned Outputs**: Recruiter outreach, interview preparation, structured match/gap analysis, candidate follow-up questions, and additional export formats.

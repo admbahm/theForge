@@ -545,6 +545,18 @@ Existing intelligence.
 	if !strings.Contains(string(resumeData), "# Tony Stark") {
 		t.Errorf("Resume missing name, got:\n%s", string(resumeData))
 	}
+	for _, expected := range []string{
+		"> [!info] Application Target — Internal",
+		"> **Company:** Stark Industries",
+		"> **Role:** Principal DevOps Architect",
+		"> **Job ID:** R123",
+		"> **Source note:** job.md",
+		"> Remove this callout before submitting or exporting the document.",
+	} {
+		if !strings.Contains(string(resumeData), expected) {
+			t.Errorf("Resume missing application context %q, got:\n%s", expected, resumeData)
+		}
+	}
 	if !strings.Contains(string(resumeData), "THE FORGE DEMO OUTPUT") {
 		t.Fatalf("demo resume missing warning banner:\n%s", resumeData)
 	}
@@ -561,6 +573,24 @@ Existing intelligence.
 	}
 	if !strings.Contains(string(clData), "THE FORGE DEMO OUTPUT") {
 		t.Fatalf("demo cover letter missing warning banner:\n%s", clData)
+	}
+	for _, expected := range []string{
+		"> **Company:** Stark Industries",
+		"> **Role:** Principal DevOps Architect",
+		"> **Job ID:** R123",
+		"> **Source note:** job.md",
+	} {
+		if !strings.Contains(string(clData), expected) {
+			t.Errorf("Cover letter missing application context %q, got:\n%s", expected, clData)
+		}
+	}
+}
+
+func TestApplicationSourceReferenceDoesNotExposePathsOutsideVault(t *testing.T) {
+	vault := filepath.Join(string(filepath.Separator), "vault")
+	outside := filepath.Join(string(filepath.Separator), "private", "job.md")
+	if got := applicationSourceReference(vault, outside); got != "job.md" {
+		t.Fatalf("applicationSourceReference() = %q, want basename only", got)
 	}
 }
 

@@ -232,8 +232,10 @@ Notes without matching states are ignored. Changing the frontmatter of a job pos
    - Result: Appends a `## The Forge Intelligence` section to the note body and updates state to `state: intel-ready`.
 3. **Application Anvil (`apply` -> `completed`)**:
    - Trigger: A job note with `state: apply`.
-   - Action: Reads the Career Knowledge Base (CKB) files, scores/selects candidate claims, and compiles customized application materials (Resume and Cover Letter).
-   - Result: Outputs generated files to the vault's application directory and transitions state to `state: completed` (preserving existing intelligence section and custom fields).
+   - Action: Reads the Career Knowledge Base (CKB) files, scores/selects candidate claims, and deterministically compiles customized application materials (Resume and Cover Letter). This compilation path does not invoke an LLM.
+   - Result: Outputs generated files to the vault's application directory and transitions state to `state: completed` (preserving existing intelligence section and custom fields). Each generated document begins with an internal application-target callout identifying the company, role, available job ID/location, and source note.
+
+In the current alpha, `completed` means packet generation completed successfully. It does not mean the application was submitted, and submission/outcome tracking is not yet implemented.
 
 ---
 
@@ -291,6 +293,24 @@ Tailored resumes (`resume.md`), cover letters (`cover_letter.md`), and a determi
 ```
 
 Packet directory names use a readable company/role prefix plus a deterministic identity suffix derived from the source note and job ID. This prevents distinct notes with identical company/title metadata from overwriting one another. The current alpha sanitizer can still retain punctuation, Markdown-significant characters, and Unicode dashes from job titles. Review paths before using them in shell commands; fully portable packet naming remains a stabilization item.
+
+Both generated Markdown documents begin with an `Application Target — Internal` callout containing the company, role, optional job ID and location, and vault-relative source-note path. This context makes it possible to identify the intended posting while reviewing application files. Remove the callout before submitting or exporting either document; it is workflow metadata, not candidate-facing resume or cover-letter content.
+
+For example:
+
+```markdown
+> [!info] Application Target — Internal
+> **Company:** Apple
+> **Role:** Quality Engineer
+> **Job ID:** 123456
+> **Location:** San Diego, California
+> **Source note:** @Active/Apple/Apple - Quality Engineer.md
+> Remove this callout before submitting or exporting the document.
+```
+
+The source reference is relative to the configured vault. The Forge does not place an absolute vault path or private CKB evidence in this callout. A job ID or location line is omitted when the source note does not provide that value.
+
+The change applies when a packet is generated. Existing packets are not rewritten automatically. To deliberately regenerate an existing packet with current output formatting, review or back up the packet as needed, change its source note from `state: completed` back to `state: apply`, and let the running watcher rebuild it. The deterministic packet identity causes the complete packet directory to be transactionally replaced rather than creating a second copy.
 
 ---
 

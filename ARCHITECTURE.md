@@ -55,7 +55,7 @@ graph TD
 *   `internal/ollama/client.go`
     *   **Responsibility**: Implements the provider-neutral client contract. Wraps HTTP queries to the local Ollama API (specifically `/api/generate` default endpoint), sets generation parameters (like low temperature for predictability), constructs structured prompts, and cleans output code blocks.
 *   `pkg/engine/orchestrator.go`
-    *   **Responsibility**: Implements recursive filesystem directory watching via `fsnotify` and coordinates vault scanning. Workers perform intelligence transitions or, for `state: apply`, invoke the CKB planning/rendering pipeline and write a resume and cover letter. A pending/in-flight set coalesces event storms by filepath while retaining one follow-up pass when a save arrives during queued or active processing.
+    *   **Responsibility**: Implements recursive filesystem directory watching via `fsnotify` and coordinates vault scanning. Workers perform intelligence transitions or, for `state: apply`, invoke the CKB planning/rendering pipeline and write a resume and cover letter. Each application document receives a removable internal callout with target and source-note identity before transactional publication. A pending/in-flight set coalesces event storms by filepath while retaining one follow-up pass when a save arrives during queued or active processing.
 *   `pkg/models/job_post.go`
     *   **Responsibility**: Defines the core schema (`JobPost` struct). Provides helpers to separate YAML frontmatter metadata from the Markdown body (`splitMarkdown`), parses structures, and updates individual state properties using low-level YAML AST mapping.
 
@@ -157,6 +157,9 @@ graph TD
    - Invention of candidate achievements is strictly forbidden.
    - Match statuses assign confidence metrics (direct match, transferable, or gap).
    - Every generated resume bullet or application claim must be traceable back to supporting items in the candidate's verified evidence vault.
+4. **Application Context**:
+   - Generated resume and cover-letter Markdown begins with a clearly labeled internal callout containing company, role, optional job ID/location, and a vault-relative source-note path.
+   - The callout is workflow metadata, must not expose an absolute vault path, and must be removed before candidate-facing submission or export.
 
 ### Stabilization Boundary
 

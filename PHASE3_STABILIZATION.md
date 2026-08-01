@@ -71,6 +71,7 @@ The source note is updated atomically, but artifact files are created directly. 
 - Render and export all packet files into a same-filesystem staging directory.
 - Sync and close every staged file before publication.
 - Include a deterministic manifest containing artifact types, digests, provenance references, warnings, source job identity, and compiler/schema versions.
+- Prepend a clearly labeled, removable application-target callout to each generated Markdown document without exposing absolute vault paths or private evidence.
 - Publish the complete directory as one logical operation, preserving the previous valid packet until replacement succeeds.
 - Advance the job note only after the packet is durably published.
 - Record a recoverable failure without falsely advancing state.

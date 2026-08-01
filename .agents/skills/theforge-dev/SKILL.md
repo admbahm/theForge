@@ -25,6 +25,7 @@ Develop The Forge without risking user vault data or documenting planned behavio
 - If a job asks for AWS but verified evidence only shows GCP, Kubernetes, or Terraform, do not claim AWS production experience. Frame cloud infrastructure skills as transferable and mark AWS as a gap until verified.
 - Prefer concrete evidence and traceability over keyword stuffing.
 - Preserve candidate authenticity, voice, constraints, and career direction.
+- Keep generated application-target callouts clearly labeled as removable internal workflow metadata. Include only target identity and a vault-relative source-note reference; never expose an absolute vault path or private evidence in the callout.
 
 ## Implement Filesystem Changes Safely
 

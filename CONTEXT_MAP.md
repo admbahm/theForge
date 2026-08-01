@@ -59,11 +59,11 @@ Future changes must adhere strictly to these patterns:
     *   **Local Tier (`local`)**: Filters `new`/`""` -> processes locally via Ollama to extract core signals -> transitions state to `processed`.
     *   **Frontier Tier (`frontier`)**: Filters `favorite` -> processes via premium API (Gemini/OpenAI) to perform deep synthesis -> transitions state to `intel-ready`.
     *   **Auto Tier (`auto`)**: Automatically coordinates both local and frontier transitions.
-    *   **Application (`apply`)**: Validates the CKB, builds strict-public resume and cover-letter plans, renders Markdown artifacts, writes them under the vault's `applications` directory, and transitions the source note to `completed`.
+    *   **Application (`apply`)**: Validates the CKB, builds strict-public resume and cover-letter plans, renders Markdown artifacts with removable internal target-context callouts, writes them under the vault's `applications` directory, and transitions the source note to `completed`.
 5.  **Intelligence Process Flow**:
     `Orchestrator.handleFile(path)` $\rightarrow$ Reads $\rightarrow$ Unmarshals $\rightarrow$ Filter state and tier $\rightarrow$ Optimize VRAM (unload conflicting models via `/api/ps` and `keep_alive: 0`) $\rightarrow$ Call `IntelGenerator.GenerateIntel()` with context tier value $\rightarrow$ Overwrite existing `The Forge Intelligence` section $\rightarrow$ Atomic write.
 6.  **Application Process Flow**:
-    `Orchestrator.handleFile(path)` $\rightarrow$ Detect `apply` $\rightarrow$ Parse/validate CKB $\rightarrow$ Build strict-public plans $\rightarrow$ Render resume and cover letter $\rightarrow$ Export packet $\rightarrow$ Atomically update source note to `completed`.
+    `Orchestrator.handleFile(path)` $\rightarrow$ Detect `apply` $\rightarrow$ Parse/validate CKB $\rightarrow$ Build strict-public plans $\rightarrow$ Render resume and cover letter $\rightarrow$ Prepend internal target/source context $\rightarrow$ Export packet $\rightarrow$ Atomically update source note to `completed`.
 
 ---
 

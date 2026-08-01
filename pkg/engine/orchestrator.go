@@ -449,11 +449,12 @@ func (o *Orchestrator) processApply(path string, job models.JobPost) error {
 		return fmt.Errorf("cover letter rendering failed")
 	}
 
-	resumeBytes, err := renderArtifactMarkdown(resumeRenderRes.Artifact, o.application.DemoMode)
+	sourceReference := applicationSourceReference(o.vaultPath, path)
+	resumeBytes, err := renderArtifactMarkdown(resumeRenderRes.Artifact, o.application.DemoMode, job, sourceReference)
 	if err != nil {
 		return fmt.Errorf("export resume markdown: %w", err)
 	}
-	coverLetterBytes, err := renderArtifactMarkdown(clRenderRes.Artifact, o.application.DemoMode)
+	coverLetterBytes, err := renderArtifactMarkdown(clRenderRes.Artifact, o.application.DemoMode, job, sourceReference)
 	if err != nil {
 		return fmt.Errorf("export cover letter markdown: %w", err)
 	}
@@ -489,15 +490,44 @@ func (o *Orchestrator) processApply(path string, job models.JobPost) error {
 	return nil
 }
 
-func renderArtifactMarkdown(artifact *rendering.Artifact, demoMode bool) ([]byte, error) {
+func renderArtifactMarkdown(artifact *rendering.Artifact, demoMode bool, job models.JobPost, sourceReference string) ([]byte, error) {
 	var output bytes.Buffer
 	if demoMode {
 		output.WriteString("> **THE FORGE DEMO OUTPUT — FICTIONAL DATA — DO NOT SUBMIT**\n\n")
 	}
+	writeApplicationContext(&output, job, sourceReference)
 	if err := export.ExportMarkdown(artifact, &output, export.MarkdownOptions{IncludeHeadings: true}); err != nil {
 		return nil, err
 	}
 	return output.Bytes(), nil
+}
+
+func writeApplicationContext(output *bytes.Buffer, job models.JobPost, sourceReference string) {
+	output.WriteString("> [!info] Application Target — Internal\n")
+	fmt.Fprintf(output, "> **Company:** %s\n", singleLine(job.Company))
+	fmt.Fprintf(output, "> **Role:** %s\n", singleLine(job.Title))
+	if value := singleLine(job.JobID); value != "" {
+		fmt.Fprintf(output, "> **Job ID:** %s\n", value)
+	}
+	if value := singleLine(job.Location); value != "" {
+		fmt.Fprintf(output, "> **Location:** %s\n", value)
+	}
+	if value := singleLine(sourceReference); value != "" {
+		fmt.Fprintf(output, "> **Source note:** %s\n", value)
+	}
+	output.WriteString("> Remove this callout before submitting or exporting the document.\n\n")
+}
+
+func singleLine(value string) string {
+	return strings.Join(strings.Fields(value), " ")
+}
+
+func applicationSourceReference(vaultPath, sourcePath string) string {
+	relativePath, err := filepath.Rel(filepath.Clean(vaultPath), filepath.Clean(sourcePath))
+	if err != nil || relativePath == ".." || strings.HasPrefix(relativePath, ".."+string(filepath.Separator)) {
+		return filepath.Base(sourcePath)
+	}
+	return filepath.ToSlash(relativePath)
 }
 
 func manifestFileForArtifact(name string, data []byte, artifact *rendering.Artifact) packetManifestFile {

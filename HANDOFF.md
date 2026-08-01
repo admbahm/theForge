@@ -2,16 +2,21 @@
 
 ## 1. Branch and Git Status
 
-- **Active Branch**: `codex/master-resume-importer`
-- **Base**: merged `main` at `2b876b9`
-- **Checkpoint Scope**: Master-resume import, planner ordering, watcher/output isolation, OpenHunt salary compatibility, regression tests, real-vault trial findings, and aligned documentation.
+- **Active Branch**: `codex/application-context-headers`
+- **Base**: `main` at `0c6a193`
+- **Checkpoint Scope**: Application-target context in generated resume and cover-letter Markdown, source-path privacy, regression tests, and aligned documentation/instructions.
 
 ## 2. Active Goal and Objectives
 
-Close the missing boundary between a conventional Markdown master resume and The Forge's validated Career Knowledge Base so real resume and cover-letter compilation can begin under a human review gate.
+Make every generated resume and cover letter immediately identifiable during review without moving or duplicating the source job note.
 
 ## 3. Work Completed
 
+- Prepended a removable `Application Target — Internal` callout to generated resume and cover-letter Markdown.
+- Included company, role, optional job ID/location, and the vault-relative source-note path in the callout.
+- Prevented unexpected out-of-vault source paths from exposing absolute paths by falling back to the source basename.
+- Covered context presence and source-path privacy with orchestrator regression tests.
+- Aligned README, design, architecture, context map, roadmap, stabilization plan, and agent-development instructions with the behavior.
 - Added `theforge ckb import-resume -source ... -output ...`.
 - Import is deterministic, local-only, source-read-only, atomic, and refuses to overwrite an existing output directory.
 - Default output records are `Draft`; `-ready` explicitly creates `Active`, `Self-Attested`, 0.85-confidence records after review.
@@ -40,8 +45,8 @@ Close the missing boundary between a conventional Markdown master resume and The
 
 ## 5. Immediate Next Steps
 
-1. Implement portable, collision-resistant packet directory naming with migration/compatibility tests.
-2. Manually review live-trial claims, provenance, warnings, privacy, permissions, and source-note preservation.
+1. Manually verify the callout in a disposable generated packet and confirm the removal step fits the submission workflow.
+2. Complete portable packet-component sanitization and migration/compatibility tests; deterministic collision-resistant suffixes are implemented.
 3. Continue Phase 3 deterministic build identity and restart recovery.
 
 ## 6. Pending Boundaries

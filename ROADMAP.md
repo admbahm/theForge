@@ -30,11 +30,12 @@ This roadmap outlines the evolution of **The Forge** from a local-first watcher 
 *   [x] **Deterministic Claim Planning**: Extract, authorize, score, and select traceable claims under artifact policies.
 *   [x] **Resume Tailoring Baseline**: Compile a deterministic Markdown resume from an authorized artifact plan.
 *   [x] **Cover Letter Baseline**: Compile a deterministic Markdown cover letter from authorized claims and target context.
-*   [x] **Application Directory Baseline**: Write resume and cover-letter files under `<vault>/applications/<company>-<role>/`.
+*   [x] **Application Directory Baseline**: Write resume and cover-letter files under `<vault>/applications/<company>-<role>-<identity-suffix>/`.
 *   [x] **Watcher Integration**: Process `state: apply`, preserve the source note, and transition to `state: completed` after successful generation.
 *   [x] **Transactional Packet Publication**: Stage and sync resume, cover letter, and digest/provenance manifest as one rollback-safe directory publication.
 *   [x] **Real-Vault Generation Trial**: Import a private master resume, validate the resulting CKB, and generate separate application packets for multiple real `apply` notes without recursive output processing.
-*   [ ] **Portable Packet Directory Names**: Normalize punctuation and Unicode from company/role components, prevent unsafe or hidden paths, and define deterministic collision handling.
+*   [x] **Application Context Headers**: Prepend removable internal company, role, job identity, and source-note context to generated resume and cover-letter Markdown for unambiguous packet review.
+*   [ ] **Portable Packet Directory Names**: Normalize punctuation and Unicode from company/role components and prevent unsafe or hidden paths; deterministic collision-resistant identity suffixes are implemented.
 *   [ ] **Controlled-Trial Review**: Manually review generated claims, provenance, warnings, privacy, permissions, and source-note preservation before closing the alpha gate.
 *   [ ] **Phase 3 Stabilization Gate**: Complete the safety, transactionality, diagnostic, idempotency, and test requirements in `PHASE3_STABILIZATION.md`.
 *   [ ] **Structured Intelligence Payloads**: Emit JSON / JSON-LD alongside markdown so downstream tools can easily query job requirements, risks, skills, and match evidence.
