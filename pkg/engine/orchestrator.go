@@ -458,7 +458,7 @@ func (o *Orchestrator) processApply(path string, job models.JobPost) error {
 		return fmt.Errorf("export cover letter markdown: %w", err)
 	}
 
-	packetName := fmt.Sprintf("%s-%s", sanitizePathSegment(job.Company), sanitizePathSegment(job.Title))
+	packetName := applicationPacketName(o.vaultPath, path, job)
 	applicationsDir := filepath.Join(o.vaultPath, "applications")
 	packet := applicationPacket{
 		Files: map[string][]byte{
@@ -547,6 +547,16 @@ func sanitizePathSegment(s string) string {
 	s = strings.ReplaceAll(s, "/", "-")
 	s = strings.ReplaceAll(s, "\\", "-")
 	return strings.ToLower(s)
+}
+
+func applicationPacketName(vaultPath, sourcePath string, job models.JobPost) string {
+	relativePath, err := filepath.Rel(filepath.Clean(vaultPath), filepath.Clean(sourcePath))
+	if err != nil {
+		relativePath = filepath.Clean(sourcePath)
+	}
+	identity := job.JobID + "\x00" + filepath.ToSlash(relativePath)
+	suffix := digestBytes([]byte(identity))[:12]
+	return fmt.Sprintf("%s-%s-%s", sanitizePathSegment(job.Company), sanitizePathSegment(job.Title), suffix)
 }
 
 func atomicWrite(path string, data []byte) error {

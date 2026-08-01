@@ -501,7 +501,12 @@ Existing intelligence.
 	}
 
 	// Verify generated artifacts in vault applications folder
-	appDir := filepath.Join(vault, "applications", "stark_industries-principal_devops_architect")
+	packetName := applicationPacketName(vault, path, models.JobPost{
+		JobID:   "R123",
+		Company: "Stark Industries",
+		Title:   "Principal DevOps Architect",
+	})
+	appDir := filepath.Join(vault, "applications", packetName)
 	resumePath := filepath.Join(appDir, "resume.md")
 	clPath := filepath.Join(appDir, "cover_letter.md")
 	manifestPath := filepath.Join(appDir, "manifest.json")
@@ -556,6 +561,27 @@ Existing intelligence.
 	}
 	if !strings.Contains(string(clData), "THE FORGE DEMO OUTPUT") {
 		t.Fatalf("demo cover letter missing warning banner:\n%s", clData)
+	}
+}
+
+func TestApplicationPacketNameDistinguishesDuplicateMetadata(t *testing.T) {
+	vault := filepath.Join(string(filepath.Separator), "vault")
+	job := models.JobPost{
+		JobID:   "duplicate-id",
+		Company: "Example",
+		Title:   "Engineering Manager",
+	}
+
+	first := applicationPacketName(vault, filepath.Join(vault, "first.md"), job)
+	second := applicationPacketName(vault, filepath.Join(vault, "archive", "second.md"), job)
+	if first == second {
+		t.Fatalf("distinct source notes produced the same packet name %q", first)
+	}
+	if repeated := applicationPacketName(vault, filepath.Join(vault, "first.md"), job); repeated != first {
+		t.Fatalf("packet name is not deterministic: got %q, want %q", repeated, first)
+	}
+	if !strings.HasPrefix(first, "example-engineering_manager-") {
+		t.Fatalf("packet name %q lost its readable company/title prefix", first)
 	}
 }
 
